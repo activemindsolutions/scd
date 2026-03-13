@@ -319,10 +319,12 @@ program
 
 program
   .command('report')
-  .description('Generera HTML-, Markdown- eller JSON-rapport från senaste scan (utan ny scan)')
+  .description('Generate HTML, Markdown or JSON report from the last scan (without re-scanning)')
   .option('--format <fmt>', 'html (default), md, json', 'html')
   .option('--output <file>', 'Spara till angiven fil (default: security-report-DATUM.html)')
-  .option('--open', 'Öppna rapporten i webbläsaren efter generering')
+  .option('--open',          'Open report in browser after generating (macOS/Windows)')
+  .option('--serve',         'Serve report via local HTTP server and open in browser (works on all platforms)')
+  .option('--port <port>',   'Port for --serve (default: random available port)')
   .action(async (opts) => {
     const path = require('path');
     const fs   = require('fs');
@@ -330,8 +332,8 @@ program
 
     const cache = loadCache(repoRoot);
     if (!cache) {
-      console.error('\n\x1b[31m✗ Ingen sparad scan hittades.\x1b[0m');
-      console.error("  Kör 'sc scan' först för att generera findings att rapportera från.\n");
+      console.error('\n\x1b[31m✗ No saved scan found.\x1b[0m');
+      console.error("  Run 'sc scan' first to generate findings to report from.\n");
       process.exit(1);
     }
 
@@ -387,6 +389,76 @@ program
       console.log('\x1b[32m✓ HTML report:\x1b[0m \x1b[36m' + osc8Link + '\x1b[0m');
     } else {
       console.log('\x1b[32m✓ HTML report:\x1b[0m \x1b[36m' + outPath + '\x1b[0m');
+    }
+
+    if (opts.serve) {
+      const http = require('http');
+      const fs   = require('fs');
+      const path = require('path');
+
+      // Find a free port
+      const getPort = () => new Promise((resolve, reject) => {
+        const srv = require('net').createServer();
+        srv.listen(opts.port ? parseInt(opts.port) : 0, () => {
+          const port = srv.address().port;
+          srv.close(() => resolve(port));
+        });
+        srv.on('error', reject);
+      });
+
+      const port = await getPort();
+      const reportDir  = path.dirname(outPath);
+      const reportFile = path.basename(outPath);
+
+      const server = http.createServer((req, res) => {
+        // Only serve files within the report directory
+        const safeName = path.basename(req.url.split('?')[0]) || reportFile;
+        const filePath = path.join(reportDir, safeName);
+        if (!filePath.startsWith(reportDir)) {
+          res.writeHead(403); res.end(); return;
+        }
+        fs.readFile(filePath, (err, data) => {
+          if (err) { res.writeHead(404); res.end('Not found'); return; }
+          const ext = path.extname(filePath).toLowerCase();
+          const mime = { '.html': 'text/html', '.json': 'application/json',
+                         '.css': 'text/css', '.js': 'text/javascript' }[ext] || 'text/plain';
+          res.writeHead(200, { 'Content-Type': mime });
+          res.end(data);
+        });
+      });
+
+      server.listen(port, '127.0.0.1', () => {
+        const url = 'http://localhost:' + port + '/' + reportFile;
+        console.log('\x1b[36m⇢  Serving report at: ' + url + '\x1b[0m');
+
+        // Open browser
+        const { execSync } = require('child_process');
+        const openCmd = process.platform === 'darwin' ? 'open'
+                      : process.platform === 'win32'  ? 'start'
+                      : 'xdg-open';
+        try { execSync(openCmd + ' "' + url + '"'); } catch {}
+
+        console.log('\x1b[90m   Press Enter to stop the server…\x1b[0m');
+      });
+
+      // Wait for Enter or Ctrl+C
+      await new Promise((resolve) => {
+        process.stdin.setRawMode && process.stdin.setRawMode(true);
+        process.stdin.resume();
+        process.stdin.once('data', () => {
+          server.close();
+          process.stdin.pause();
+          process.stdin.setRawMode && process.stdin.setRawMode(false);
+          console.log('\x1b[90m   Server stopped.\x1b[0m\n');
+          resolve();
+        });
+        process.on('SIGINT', () => {
+          server.close();
+          console.log('\n\x1b[90m   Server stopped.\x1b[0m\n');
+          resolve();
+        });
+      });
+      return;
     }
 
     if (opts.open) {
