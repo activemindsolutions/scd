@@ -1,0 +1,16 @@
+# Development files – excluded from npm pack / publish
+test/
+*.test.js
+*.spec.js
+.DS_Store
+.env
+.env.*
+install-dev.sh
+sc
+{hooks,rules,lib,bin}
+CLAUDE.md
+*.md
+!README.md
+.git/
+.gitignore
+node_modules/

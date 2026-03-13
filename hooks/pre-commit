@@ -1,0 +1,3 @@
+#!/bin/sh
+node $(pwd)/../security-copilot-poc/bin/security-copilot.js scan --hook=pre-commit
+exit $?

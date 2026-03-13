@@ -1,0 +1,29 @@
+{
+  "name": "security-copilot",
+  "version": "0.1.0",
+  "description": "Security Co-Pilot – AI-assisted security scanning for development teams",
+  "author": "Activemind Solutions AB",
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://github.com/activemind/security-copilot",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "sc": "./bin/security-copilot.js"
+  },
+  "main": "./bin/security-copilot.js",
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node test/run-poc.js",
+    "link": "npm link",
+    "unlink": "npm unlink -g security-copilot"
+  },
+  "dependencies": {
+    "commander": "^11.0.0"
+  }
+}

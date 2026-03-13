@@ -1,0 +1,3 @@
+#!/bin/sh
+node /Users/mikael/Development/security-copilot-poc/bin/security-copilot.js scan --hook=pre-push
+exit $?
