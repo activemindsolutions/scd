@@ -23,6 +23,7 @@ Installed and verified working on:
 - ✅ `sc report` – generate HTML/MD/JSON from cached scan
 - ✅ `sc report --open` – open in browser (macOS/Windows)
 - ✅ `sc report --serve` – local HTTP server for Linux/Firefox (auto-closes on keypress)
+- ✅ `sc report --serve --port <n>` – optional fixed port
 - ✅ `sc approve` – create exceptions in config.yml
 - ✅ `sc resolve` – mark findings as resolved
 - ✅ `sc audit` – view audit trail
@@ -34,8 +35,8 @@ Installed and verified working on:
 - ✅ `sc store --show` – full meta.json view for current repo
 - ✅ `sc store --reports` – list saved reports
 - ✅ `sc store --open / --open-reports / --path` – navigation helpers
-- ✅ `sc store --verify [--verbose] [--clean] [--json]` – verify repos exist on disk, interactive cleanup
-- ✅ `sc rules` – list all 172 rules
+- ✅ `sc store --verify [--verbose] [--clean] [--json]` – verify repos exist on disk, interactive cleanup with keep/archive/delete/skip
+- ✅ `sc rules` – list all 172 rules grouped by category
 - ✅ `sc rules --lang / --severity / --id / --search / --stats / --format json`
 
 ### Rule coverage (172 rules total)
@@ -47,39 +48,48 @@ Installed and verified working on:
 - ✅ Sensitive files (filename + content) – 50 rules (includes EXPOSURE)
 - ✅ Infrastructure leakage – 21 rules (INFRA-001–051)
 
+**Severity breakdown:** CRITICAL: 63, HIGH: 69, MEDIUM: 10, EXPOSURE: 30
+
 ### Infrastructure & quality
 - ✅ Global store architecture (`~/.security-copilot/repos/{repoId}/`)
 - ✅ Zero repo footprint – no files written to customer's repo after init
 - ✅ False-positive filters: minified, vendor, build-tool-configs
-- ✅ Antipattern lookbehind (env-var fallbacks correctly excluded)
-- ✅ path-based vs remote repo type handling in store-verify
-- ✅ All CLI output and rule text in English (was partially Swedish)
-- ✅ Git setup: main branch, executable bit, .gitignore, .npmignore
-- ✅ INSTALL.md for multi-machine setup
-- ✅ Report file permissions: `mode: 0o644` (fixes Linux browser access)
+- ✅ Antipattern lookbehind support (env-var fallbacks like `process.env.X || 'localhost'` correctly excluded)
+- ✅ path-based vs remote repo type handling (path-based repos don't require `.git/`)
+- ✅ All CLI output and rule text in English
+- ✅ report-html.js, report-markdown.js, report-json.js write with `mode: 0o644` (fixes Linux browser access)
+- ✅ `rule-registry.js` – central normalised catalogue of all rules, used by `sc rules`
+- ✅ `store-verify.js` – verify, archive (`tar.gz`), delete with scan-history confirmation
+- ✅ Git: main branch, executable bit on bin/security-copilot.js, .gitignore, .npmignore
+- ✅ `package.json` – correct `bin: { sc: ... }`, engines, author, files
+- ✅ `INSTALL.md` – multi-machine install guide
+- ✅ `securityagent.yml` – English template config for customer repos
+- ✅ Claude project setup: `CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/CODEBASE.md`, `docs/PROGRESS.md`
 
 ---
 
 ## Next on roadmap
 
 ### `sc deps` – Dependency scanning
-Deliberately moved forward – needs careful design.
+Deliberately moved forward – needs careful design before implementation.
 
-**Planned:**
+**Planned architecture:**
 - Level 1: Outdated check (npm, PyPI, Composer, NuGet)
 - Level 2: CVE check via OSV API (`api.osv.dev/v1/query`) – covers all ecosystems
 - Parsers: `package.json`, `requirements.txt`, `composer.json`, `*.csproj`
 - Separate `sc deps` command (not mixed into `sc scan`)
 - Output: same severity model as scan findings
+- CRA documentation angle: evidence of active vulnerability monitoring
 
 ### Multi-user & portal
 - Portal architecture (Team/Professional tiers)
 - Central dashboard for team findings
 - Zero-knowledge design (supply chain safety)
+- NIS2/CRA compliance reporting
 
 ### Install/uninstall flow
-- `sc uninstall` – removes hooks, optionally cleans store (with confirmation)
-- `sc store --nuke` – removes all store data (with explicit confirmation + name-typing)
+- `sc uninstall` – removes hooks from registered repos, optionally cleans store
+- `sc store --nuke` – removes all store data (explicit confirmation + name-typing)
 - Foundation already in place: `store-verify.js` has `deleteRepo()` and `archiveRepo()`
 
 ---
@@ -87,22 +97,27 @@ Deliberately moved forward – needs careful design.
 ## Parked ideas (not forgotten)
 
 - **`scan_sensitivity`**: `strict | balanced | relaxed` per rule category ("volume control")
-  - Connects to existing `trust_level` in config
 - **Deep analysis in pre-push hook** (optional, with cost warning)
 - **IDE extension** (VS Code)
-- **NestJS decorator patterns** – rule additions
-- **`sc export` + merge** (UUID session IDs already implemented)
+- **NestJS decorator patterns** – additional rule coverage
+- **`sc export` + merge** (UUID session IDs already implemented in audit)
 - **Config signing** (supply chain protection)
 - **Portal tier differentiation**: Starter=local, Team=central portal, Professional=full integration
-- **Minified file scanning** – currently skipped entirely; accepted trade-off since source is scanned
-  - If needed: subset of HIGH-confidence rules (RFC1918 IPs, connection strings) on minified files
+- **Minified file scanning** – currently skipped entirely; accepted trade-off since source is scanned. If needed: subset of HIGH-confidence rules (RFC1918 IPs, connection strings) applied to minified files only
 
 ---
 
 ## Known issues / technical debt
 
-- `sc report --open` uses `xdg-open` on Linux which opens with `file://` – blocked by Firefox
-  → Workaround: use `sc report --serve` on Linux
-- Swedish text may remain in older ASP.NET rule comments (not user-facing)
-- `securityagent.yml` in project root is a template, not actively used by SC itself yet
-  (rule_overrides and exceptions in config.yml are the active mechanism)
+- `sc report --open` uses `xdg-open` on Linux which opens with `file://` – blocked by Firefox security policy. **Workaround: use `sc report --serve`**
+- `securityagent.yml` in project root is a template; `rule_overrides` and `exceptions` in `config.yml` (store) are the active mechanism. These should eventually be unified.
+- Swedish text may remain in older ASP.NET rule comments (not user-facing, low priority)
+
+---
+
+## How to update this file
+
+At the end of each work session:
+1. Ask Claude to generate an updated `PROGRESS.md`
+2. Copy into repo, commit and push
+3. Replace the file in Claude Project Knowledge (delete old, upload new)
