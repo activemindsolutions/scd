@@ -399,68 +399,109 @@ program
       const http = require('http');
       const fs   = require('fs');
       const path = require('path');
+      const { buildIndexPage } = require('../lib/report-index');
 
-      // Find a free port
+      const store      = require('../lib/store');
+      const reportDir  = store.reportsDir(repoRoot);
+      const reportFile = path.basename(outPath);
+      const allReports = store.listReports(repoRoot).filter(r => r.filename.endsWith('.html'));
+      const showIndex  = opts.index || allReports.length > 1;
+
       const getPort = () => new Promise((resolve, reject) => {
         const srv = require('net').createServer();
         srv.listen(opts.port ? parseInt(opts.port) : 0, () => {
-          const port = srv.address().port;
-          srv.close(() => resolve(port));
+          const p = srv.address().port;
+          srv.close(() => resolve(p));
         });
         srv.on('error', reject);
       });
 
-      const port = await getPort();
-      const reportDir  = path.dirname(outPath);
-      const reportFile = path.basename(outPath);
+      const port    = await getPort();
+      const baseUrl = 'http://localhost:' + port;
 
       const server = http.createServer((req, res) => {
-        // Only serve files within the report directory
-        const safeName = path.basename(req.url.split('?')[0]) || reportFile;
-        const filePath = path.join(reportDir, safeName);
-        if (!filePath.startsWith(reportDir)) {
-          res.writeHead(403); res.end(); return;
+        const url = decodeURIComponent(req.url.split('?')[0]);
+
+        // Download all – show path hint (real zip would need extra dep)
+        if (url === '/download-all') {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end('<p style="font-family:monospace;padding:2rem;background:#0a0f1a;color:#e2e8f0">' +
+            'Reports folder: <code>' + reportDir + '</code></p>');
+          return;
         }
-        fs.readFile(filePath, (err, data) => {
-          if (err) { res.writeHead(404); res.end('Not found'); return; }
-          const ext = path.extname(filePath).toLowerCase();
-          const mime = { '.html': 'text/html', '.json': 'application/json',
-                         '.css': 'text/css', '.js': 'text/javascript' }[ext] || 'text/plain';
-          res.writeHead(200, { 'Content-Type': mime });
-          res.end(data);
-        });
+
+        // Download single file
+        if (url.startsWith('/download/')) {
+          const fname = path.basename(url.slice('/download/'.length));
+          const fpath = path.join(reportDir, fname);
+          if (!fpath.startsWith(reportDir) || !fs.existsSync(fpath)) {
+            res.writeHead(404); res.end('Not found'); return;
+          }
+          res.writeHead(200, {
+            'Content-Type': 'application/octet-stream',
+            'Content-Disposition': 'attachment; filename="' + fname + '"',
+          });
+          fs.createReadStream(fpath).pipe(res);
+          return;
+        }
+
+        // Index page
+        if (url === '/' || url === '/index.html') {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(buildIndexPage(allReports, reportDir, reportFile));
+          return;
+        }
+
+        // Serve report file
+        const fname = path.basename(url);
+        const fpath = path.join(reportDir, fname);
+        if (!fpath.startsWith(reportDir) || !fs.existsSync(fpath)) {
+          res.writeHead(404); res.end('Not found'); return;
+        }
+        const ext  = path.extname(fpath).toLowerCase();
+        const mime = { '.html': 'text/html', '.json': 'application/json',
+                       '.md': 'text/plain' }[ext] || 'text/plain';
+        res.writeHead(200, { 'Content-Type': mime + '; charset=utf-8' });
+        fs.createReadStream(fpath).pipe(res);
       });
 
       server.listen(port, '127.0.0.1', () => {
-        const url = 'http://localhost:' + port + '/' + reportFile;
-        console.log('\x1b[36m⇢  Serving report at: ' + url + '\x1b[0m');
+        const openUrl = showIndex
+          ? baseUrl + '/'
+          : baseUrl + '/' + encodeURIComponent(reportFile);
 
-        // Open browser
+        if (showIndex) {
+          console.log('\x1b[36m⇢  Report index: ' + baseUrl + '/\x1b[0m');
+          console.log('\x1b[90m   ' + allReports.length + ' report' +
+            (allReports.length !== 1 ? 's' : '') + ' available\x1b[0m');
+        } else {
+          console.log('\x1b[36m⇢  Serving report: ' + openUrl + '\x1b[0m');
+        }
+
         const { execSync } = require('child_process');
         const openCmd = process.platform === 'darwin' ? 'open'
                       : process.platform === 'win32'  ? 'start'
                       : 'xdg-open';
-        try { execSync(openCmd + ' "' + url + '"'); } catch {}
-
-        console.log('\x1b[90m   Press Enter to stop the server…\x1b[0m');
+        try { execSync(openCmd + ' "' + openUrl + '"'); } catch {}
+        console.log('\x1b[90m   Press any key to stop the server…\x1b[0m');
       });
 
-      // Wait for Enter or Ctrl+C
       await new Promise((resolve) => {
-        process.stdin.setRawMode && process.stdin.setRawMode(true);
-        process.stdin.resume();
-        process.stdin.once('data', () => {
+        const cleanup = () => {
           server.close();
-          process.stdin.pause();
-          process.stdin.setRawMode && process.stdin.setRawMode(false);
+          try {
+            process.stdin.pause();
+            if (process.stdin.setRawMode) process.stdin.setRawMode(false);
+          } catch {}
           console.log('\x1b[90m   Server stopped.\x1b[0m\n');
           resolve();
-        });
-        process.on('SIGINT', () => {
-          server.close();
-          console.log('\n\x1b[90m   Server stopped.\x1b[0m\n');
-          resolve();
-        });
+        };
+        try {
+          if (process.stdin.setRawMode) process.stdin.setRawMode(true);
+          process.stdin.resume();
+          process.stdin.once('data', cleanup);
+        } catch {}
+        process.once('SIGINT', cleanup);
       });
       return;
     }
