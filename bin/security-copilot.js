@@ -34,8 +34,9 @@ program
   .option('--format <fmt>', 'Output-format: terminal (default), html, json', 'terminal')
   .option('--output <file>', 'Spara rapport till fil (används med --format html/json)')
   .option('--no-limit', 'Scanna även filer över storleksgränsen (30s timeout/fil – kan vara långsamt)')
-  .option('--deep', 'Aktivera Claude API-djupanalys av CRITICAL/HIGH findings')
-  .option('--no-audit', 'Logga inte denna scanning i audit trail')
+  .option('--deep',           'Enable Claude API deep analysis of CRITICAL/HIGH findings')
+  .option('--deep-delay <ms>', 'Delay in ms between --deep API calls (overrides config deep_delay_ms)')
+  .option('--no-audit',       'Skip audit logging for this scan')
   .action(async (targets, opts) => {
     const repoRoot = getRepoRoot();
     const config   = loadConfig(repoRoot);
@@ -79,7 +80,7 @@ program
     // 'scan' in the script path), then collect everything after it that is
     // not an option flag (-x / --x) and not the VALUE of a known option flag.
     const knownOptionFlags = new Set([
-      '--hook', '--lang', '--severity', '--rule', '--format', '--output'
+      '--hook', '--lang', '--severity', '--rule', '--format', '--output', '--deep-delay'
     ]);
     const allArgv   = process.argv;
     let   scanIdx   = -1;
@@ -154,15 +155,6 @@ program
       });
     }
 
-    // Cache findings for `sc report`
-    saveCache(repoRoot, {
-      findings,
-      target:     scanTarget,
-      totalFiles: files.length,
-      skipped,
-      scanDate:   new Date(),
-    });
-
     // Output
     if (opts.format === 'json') {
       const jsonOut = JSON.stringify({ scan: 'manual', target: scanTarget, findings }, null, 2);
@@ -220,40 +212,60 @@ program
     const { output } = formatTerminal(findings, 'manual', config, { skipped, timedOut });
     console.log(output);
 
-    // ── Djupanalys (--deep) ───────────────────────────────────────────────
+    // ── Deep analysis (--deep) ───────────────────────────────────────────
+    let deepResults = null;
     if (opts.deep) {
+      // Respect trust_level – maximum_privacy means no external API calls
+      if (config.trust_level === 'maximum_privacy') {
+        console.log('\n\x1b[33m⚠️  --deep is disabled when trust_level is maximum_privacy.\x1b[0m');
+        console.log('\x1b[90m   No code is sent externally. Set trust_level: balanced in securityagent.yml to enable.\x1b[0m\n');
+        process.exit(0);
+      }
+
       const { deepAnalyze, formatDeepSection } = require('../lib/deep-analyzer');
       const { getApiKey } = require('../lib/global-config');
       const apiKey = getApiKey();
 
       if (!apiKey) {
-        console.log('\n\x1b[31m❌ --deep kräver en Anthropic API-nyckel.\x1b[0m');
-        console.log('\x1b[90m   Alternativ 1 (rekommenderat): sc configure --api-key sk-ant-...\x1b[0m');
-        console.log('\x1b[90m   Alternativ 2 (tillfälligt):   export ANTHROPIC_API_KEY="sk-ant-..."\x1b[0m\n');
+        console.log('\n\x1b[31m❌ --deep requires an Anthropic API key.\x1b[0m');
+        console.log('\x1b[90m   Run: sc configure --api-key sk-ant-...\x1b[0m\n');
         process.exit(0);
       }
 
       const critHighCount = findings.filter(f => f.severity === 'CRITICAL' || f.severity === 'HIGH').length;
       if (critHighCount === 0) {
-        console.log('\n\x1b[90m ℹ️  Inga CRITICAL/HIGH findings att djupanalysera.\x1b[0m\n');
-        process.exit(0);
-      }
+        console.log('\n\x1b[90m ℹ️  No CRITICAL/HIGH findings to deep-analyse.\x1b[0m\n');
+      } else {
+        console.log(`\n\x1b[90m 🔍 Starting Claude deep analysis of ${critHighCount} CRITICAL/HIGH findings...\x1b[0m`);
+        try {
+          // Resolve delay: --delay flag > config deep_delay_ms > 0
+          const delayMs = opts.deepDelay
+            ? parseInt(opts.deepDelay, 10)
+            : (config && config.deep_delay_ms ? config.deep_delay_ms : 0);
 
-      console.log(`\n\x1b[90m 🔍 Startar Claude djupanalys av ${critHighCount} CRITICAL/HIGH findings...\x1b[0m`);
-
-      try {
-        const deepResults = await deepAnalyze(findings, {
-          apiKey,
-          interactive: true,
-          verbose: true,
-        });
-
-        const deepOutput = formatDeepSection(findings, deepResults);
-        if (deepOutput) console.log(deepOutput);
-      } catch (err) {
-        console.log(`\n\x1b[31m❌ Djupanalys misslyckades: ${err.message}\x1b[0m\n`);
+          deepResults = await deepAnalyze(findings, {
+            apiKey,
+            interactive: true,
+            verbose: true,
+            delayMs,
+          });
+          const deepOutput = formatDeepSection(findings, deepResults);
+          if (deepOutput) console.log(deepOutput);
+        } catch (err) {
+          console.log(`\n\x1b[31m❌ Deep analysis failed: ${err.message}\x1b[0m\n`);
+        }
       }
     }
+
+    // Cache findings (including deep results if available)
+    saveCache(repoRoot, {
+      findings,
+      target:     scanTarget,
+      totalFiles: files.length,
+      skipped,
+      scanDate:   new Date(),
+      deepResults: deepResults ? Array.from(deepResults.entries()) : null,
+    });
 
     // Manual scan: always exit 0 (informational, never blocks workflow)
     process.exit(0);
@@ -330,28 +342,42 @@ program
   .option('--serve',         'Serve report via local HTTP server and open in browser (works on all platforms)')
   .option('--port <port>',   'Port for --serve (default: random available port)')
   .option('--index',         'Always show report index page (use with --serve)')
+  .option('--scan <id>',     'Generate report from a specific scan ID (sc store --scans to list)')
   .action(async (opts) => {
     const path = require('path');
     const fs   = require('fs');
     const repoRoot = getRepoRoot();
 
-    const cache = loadCache(repoRoot);
-    if (!cache) {
-      console.error('\n\x1b[31m✗ No saved scan found.\x1b[0m');
-      console.error("  Run 'sc scan' first to generate findings to report from.\n");
-      process.exit(1);
+    let cache;
+    if (opts.scan) {
+      const { loadScan } = require('../lib/scan-cache');
+      cache = loadScan(repoRoot, opts.scan);
+      if (!cache) {
+        console.error('\n\x1b[31m✗ Scan not found: ' + opts.scan + '\x1b[0m');
+        console.error('  Run \x1b[36msc store --scans\x1b[0m to list available scans.\n');
+        process.exit(1);
+      }
+    } else {
+      cache = loadCache(repoRoot);
+      if (!cache) {
+        console.error('\n\x1b[31m✗ No saved scan found.\x1b[0m');
+        console.error("  Run 'sc scan' first to generate findings to report from.\n");
+        process.exit(1);
+      }
     }
 
-    const { findings, target, totalFiles, skipped, scanDate } = cache;
+    const { findings, target, totalFiles, skipped, scanDate, deepResults } = cache;
     const age = cacheAge(scanDate);
+    const deepMap = deepResults ? new Map(deepResults) : null;
     console.log('\n\x1b[2m↺ Using cached scan from ' + age + ' (' + new Date(scanDate).toLocaleString('en-SE') + ')\x1b[0m');
-    console.log('  Target: ' + target + '  ·  ' + findings.length + ' findings  ·  ' + totalFiles + ' files\n');
+    console.log('  Target: ' + target + '  ·  ' + findings.length + ' findings  ·  ' + totalFiles + ' files' +
+      (deepMap && deepMap.size > 0 ? '  ·  \x1b[36mdeep analysis included\x1b[0m' : '') + '\n');
 
     const fmt     = (opts.format || 'html').toLowerCase();
     const store   = require('../lib/store');
-    const dateStr = new Date(scanDate).toISOString().split('T')[0];
+    const scanIdStr = cache.scanId || new Date(scanDate).toISOString().slice(0,19).replace(/:/g,'-');
     const ext     = fmt === 'markdown' ? 'md' : fmt;
-    const defaultName = 'security-report-' + dateStr + '.' + ext;
+    const defaultName = 'security-report-' + scanIdStr + '.' + ext;
 
     // Default: store reports in ~/.security-copilot/repos/{id}/reports/
     // Override with --output for explicit path
@@ -359,12 +385,20 @@ program
       ? path.resolve(process.cwd(), opts.output)
       : store.reportPath(repoRoot, defaultName);
 
+    // Read repo name from meta.json for the report header
+    const metaPath = path.join(store.storeDir(repoRoot), 'meta.json');
+    let repoName = null;
+    try { repoName = JSON.parse(fs.readFileSync(metaPath, 'utf8')).name || null; } catch {}
+    if (!repoName) repoName = path.basename(path.resolve(repoRoot));
+
     const reportOpts = {
       target,
+      repoName,
       scanDate:   new Date(scanDate),
       totalFiles,
       skipped:    skipped || [],
       repoRoot,
+      deepResults: deepMap,
     };
 
     if (fmt === 'json') {
@@ -689,6 +723,7 @@ program
   .option('--reports',      'List saved reports for this repo')
   .option('--path',         'Print store path (for scripting)')
   .option('--show',         'Show full meta.json info for the current repo')
+  .option('--scans',         'List all saved scans for current repo')
   .option('--verify',       'Verify all repos in store still exist on disk')
   .option('--clean',        'Interactive cleanup of missing/stale repos (use with --verify)')
   .option('--verbose',      'Show detail lines for each issue (use with --verify)')
@@ -767,6 +802,45 @@ program
       row('Store path:', dir, CYAN);
 
       console.log();
+      return;
+    }
+
+    // --scans – list saved scans
+    if (opts.scans) {
+      const store    = require('../lib/store');
+      const repoRoot = getRepoRoot();
+      const scans    = store.listScans(repoRoot);
+
+      const BOLD  = '\x1b[1m';
+      const DIM   = '\x1b[90m';
+      const CYAN  = '\x1b[36m';
+      const GREEN = '\x1b[32m';
+      const RESET = '\x1b[0m';
+
+      if (scans.length === 0) {
+        console.log('\n' + DIM + ' No scans found. Run sc scan first.\n' + RESET);
+        return;
+      }
+
+      console.log('\n' + BOLD + 'Saved scans' + RESET + '  ' + DIM + store.scansDir(repoRoot) + RESET);
+      console.log(DIM + '─'.repeat(70) + RESET);
+      console.log(DIM + 'Scan ID'.padEnd(22) + 'Date'.padEnd(14) + 'Findings'.padEnd(10) + 'Files'.padEnd(8) + 'Deep' + RESET);
+      console.log(DIM + '─'.repeat(70) + RESET);
+
+      for (const s of scans) {
+        const date    = s.scanDate ? new Date(s.scanDate).toLocaleString('en-SE') : '—';
+        const deepStr = s.hasDeep ? GREEN + '✓' + RESET : DIM + '—' + RESET;
+        console.log(
+          CYAN + s.scanId.padEnd(22) + RESET +
+          DIM  + date.padEnd(14)     + RESET +
+          (String(s.findingCount)).padEnd(10) +
+          DIM + String(s.totalFiles).padEnd(8) + RESET +
+          deepStr
+        );
+      }
+      console.log(DIM + '─'.repeat(70) + RESET);
+      console.log('  ' + scans.length + ' scan' + (scans.length !== 1 ? 's' : '') + ' saved\n');
+      console.log(DIM + '  sc report --scan <id>   generate report from a specific scan\n' + RESET);
       return;
     }
 
@@ -882,6 +956,7 @@ program
     console.log('  \x1b[90msc store --open-reports     open reports folder\x1b[0m');
     console.log('  \x1b[90msc store --path             print path (for scripting)\x1b[0m');
     console.log('  \x1b[90msc store --show             show full meta info for current repo\x1b[0m');
+    console.log('  \x1b[90msc store --scans            list all saved scans\x1b[0m');
     console.log('  \x1b[90msc store --verify           verify all repos exist on disk\x1b[0m');
     console.log('  \x1b[90msc store --verify --clean   interactive cleanup of stale repos\x1b[0m\n');
   });
