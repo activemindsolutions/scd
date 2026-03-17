@@ -14,9 +14,10 @@ Security Co-Pilot (`sc`) is a CLI tool that catches security vulnerabilities bef
 - **Git hooks** – secrets scanning on pre-commit, full OWASP scan on pre-push
 - **Zero repo footprint** – no files written to your repository after init
 - **HTML, Markdown and JSON reports** with fix guidance for each finding
+- **Deep analysis** – optional Claude API integration; sends only the triggering code line + 8 lines of context, never whole files
+- **Per-scan storage** – every scan saved individually, never overwritten; regenerate reports from any historical scan
 - **Exception management** – reviewed exceptions tracked in config, never as code comments
-- **Audit trail** – full scan history per repository
-- **Deep analysis** – optional Claude API integration for AI-powered finding analysis
+- **Audit trail** – append-only scan history per repository
 - **Infrastructure leakage detection** – hardcoded IPs, internal hostnames, connection strings
 
 ---
@@ -30,8 +31,6 @@ Security Co-Pilot (`sc`) is a CLI tool that catches security vulnerabilities bef
 ---
 
 ## Installation
-
-### Clone and link (recommended)
 
 ```bash
 git clone git@github.com:activemindsolutions/security-copilot.git
@@ -59,6 +58,9 @@ sc init
 # Run a full security scan
 sc scan
 
+# Run with AI deep analysis
+sc scan --deep
+
 # Generate an HTML report from the last scan
 sc report
 
@@ -76,8 +78,11 @@ sc report --serve         # Linux / Firefox (starts local HTTP server)
 | `sc init` | Register repo and install git hooks |
 | `sc scan [target]` | Run a full security scan |
 | `sc scan --deep` | Scan with Claude API deep analysis |
+| `sc scan --deep --deep-delay <ms>` | Add delay between API calls (rate limit prevention) |
 | `sc report` | Generate report from last scan (HTML default) |
 | `sc report --serve` | Serve report via local HTTP server |
+| `sc report --serve --index` | Always show report index page |
+| `sc report --scan <id>` | Generate report from a specific saved scan |
 | `sc approve` | Create a reviewed exception for a finding |
 | `sc resolve` | Mark a finding as resolved |
 | `sc audit` | View scan history and audit trail |
@@ -90,9 +95,11 @@ sc report --serve         # Linux / Firefox (starts local HTTP server)
 | `sc list` | List all repos registered in store |
 | `sc store` | Show store info for current repo |
 | `sc store --show` | Full metadata for current repo |
+| `sc store --scans` | List all saved scans |
 | `sc store --verify` | Verify all repos exist on disk |
 | `sc store --verify --clean` | Interactive cleanup of missing/stale repos |
 | `sc configure --api-key` | Set Claude API key for deep analysis |
+| `sc version` | Detailed version info |
 | `sc doctor` | Verify installation and configuration |
 
 ---
@@ -136,10 +143,42 @@ All scan data, configs and reports are stored outside your repository:
     └── {repoId}/
         ├── meta.json         ← repo identity and last scan summary
         ├── config.yml        ← exceptions and rule overrides
-        ├── audit.log         ← full scan history
-        ├── last-scan.json    ← cache for sc report
+        ├── audit.log         ← full scan history (append-only)
+        ├── last-scan.json    ← copy of latest scan
+        ├── scans/            ← one JSON per scan, never overwritten
+        │   ├── 2026-03-17T132421.json
+        │   └── 2026-03-17T091500.json
         └── reports/          ← generated HTML/MD/JSON reports
 ```
+
+### Scan storage
+
+Every scan is saved as an individual file with a timestamp ID (`2026-03-17T132421`). Deep analysis results are stored alongside findings in the same file — running a new scan without `--deep` never loses previous deep data.
+
+```bash
+sc store --scans                      # list all saved scans
+sc report --scan 2026-03-17T091500    # regenerate report from earlier scan
+```
+
+### Deep analysis
+
+`sc scan --deep` sends findings to Claude API for AI-powered analysis. What is sent per finding:
+
+- The filename
+- Rule ID, name, severity, line number
+- The exact code line that triggered the rule
+- 8 lines of surrounding context
+
+**Whole files are never sent.** Set `trust_level: maximum_privacy` in `securityagent.yml` to disable all external API calls entirely.
+
+For large repos, configure a delay to avoid rate limits:
+
+```yaml
+# securityagent.yml
+deep_delay_ms: 2000   # 2 second pause between files
+```
+
+Or override per-run: `sc scan --deep --deep-delay 3000`
 
 ### Project configuration
 
@@ -147,6 +186,7 @@ Place `securityagent.yml` in your project root to configure scanning behaviour:
 
 ```yaml
 trust_level: balanced        # maximum_privacy | balanced | maximum_analysis
+deep_delay_ms: 0             # ms delay between --deep API calls
 block_on_critical: true
 block_on_high: true
 ```
@@ -181,8 +221,11 @@ lib/
   scanner-secrets.js     ← Fast secrets scanner (pre-commit)
   store.js               ← Global store path management
   store-verify.js        ← Store health checks and cleanup
+  scan-cache.js          ← Per-scan storage (scans/ directory)
   rule-registry.js       ← Normalised catalogue of all rules
+  deep-analyzer.js       ← Claude API deep analysis
   report-html.js         ← HTML report generator
+  report-index.js        ← HTTP server index page
   report-markdown.js     ← Markdown report generator
   report-json.js         ← JSON report generator
   rules/                 ← Rule definitions per language
