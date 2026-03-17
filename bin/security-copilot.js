@@ -1177,6 +1177,90 @@ program
   });
 
 
+// ── sc export-findings ─────────────────────────────────────────────────────
+program
+  .command('export-findings')
+  .description('Export findings from a scan for external review')
+  .option('--scan <id>',        'Scan ID to export (default: latest scan)')
+  .option('--severity <level>', 'Filter by severity: critical, high, medium, exposure')
+  .option('--rule <id>',        'Filter to a specific rule ID')
+  .option('--all',              'Include all findings, not just those with deep analysis')
+  .option('--output <path>',    'Output file path (default: ./sc-findings-{scanId}.json)')
+  .action(async (opts) => {
+    const path = require('path');
+    const { exportFindings } = require('../lib/export-findings');
+    const { loadCache, loadScan } = require('../lib/scan-cache');
+    const repoRoot = getRepoRoot();
+
+    // Resolve scan ID first so we can use it in the default filename
+    let resolvedScanId = opts.scan || null;
+    if (!resolvedScanId) {
+      const latest = loadCache(repoRoot);
+      if (latest) resolvedScanId = latest.scanId;
+    }
+
+    const defaultName = 'sc-findings-' + (resolvedScanId || 'scan') + '.json';
+    const outputPath  = opts.output
+      ? path.resolve(process.cwd(), opts.output)
+      : path.resolve(process.cwd(), defaultName);
+
+    await exportFindings({
+      repoRoot,
+      scanId:               opts.scan     || null,
+      severity:             opts.severity || null,
+      rule:                 opts.rule     || null,
+      all:                  !!opts.all,
+      outputPath,
+      includeRuleInternals: false,
+      command:              'export-findings',
+    });
+  });
+
+
+// ── sc review-rules (Activemind-internal, hidden from sc --help) ───────────
+{
+  const { Command } = require('commander');
+  const reviewCmd = new Command('review-rules');
+  reviewCmd
+    .description('Export findings with rule internals for Activemind rule quality review')
+    .option('--scan <id>',        'Scan ID to export (default: latest scan)')
+    .option('--severity <level>', 'Filter by severity: critical, high, medium, exposure')
+    .option('--rule <id>',        'Filter to a specific rule ID')
+    .option('--all',              'Include all findings, not just those with deep analysis')
+    .option('--output <path>',    'Output file path (default: ./sc-review-{scanId}.json)')
+    .action(async (opts) => {
+      const path = require('path');
+      const { exportFindings } = require('../lib/export-findings');
+      const { loadCache } = require('../lib/scan-cache');
+      const repoRoot = getRepoRoot();
+
+      let resolvedScanId = opts.scan || null;
+      if (!resolvedScanId) {
+        const latest = loadCache(repoRoot);
+        if (latest) resolvedScanId = latest.scanId;
+      }
+
+      const defaultName = 'sc-review-' + (resolvedScanId || 'scan') + '.json';
+      const outputPath  = opts.output
+        ? path.resolve(process.cwd(), opts.output)
+        : path.resolve(process.cwd(), defaultName);
+
+      await exportFindings({
+        repoRoot,
+        scanId:               opts.scan     || null,
+        severity:             opts.severity || null,
+        rule:                 opts.rule     || null,
+        all:                  !!opts.all,
+        outputPath,
+        includeRuleInternals: true,
+        command:              'review-rules',
+      });
+    });
+
+  program.addCommand(reviewCmd, { hidden: true });
+}
+
+
 program.parse(process.argv);
 
 
