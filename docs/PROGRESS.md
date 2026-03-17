@@ -1,6 +1,6 @@
 # Security Co-Pilot – Progress & Roadmap
 
-_Last updated: 2026-03-17_
+_Last updated: 2026-03-17 (session 2)_
 
 ## Status: v0.1.0 – Production-ready CLI
 
@@ -26,6 +26,7 @@ Installed and verified working on:
 - ✅ `sc report --serve --index` – always show report index page
 - ✅ `sc report --serve --port <n>` – optional fixed port
 - ✅ `sc report --scan <id>` – generate report from a specific saved scan
+- ✅ `sc export-findings` – export findings to structured JSON for external review; filters: `--severity`, `--rule`, `--scan`, `--all`, `--output`
 - ✅ `sc approve` – create exceptions in config.yml
 - ✅ `sc resolve` – mark findings as resolved
 - ✅ `sc audit` – view audit trail
@@ -54,6 +55,18 @@ Installed and verified working on:
 - ✅ Infrastructure leakage – 21 rules (INFRA-001–051)
 
 **Severity breakdown:** CRITICAL: 63, HIGH: 69, MEDIUM: 10, EXPOSURE: 30
+
+### Finding export (`sc export-findings` / `sc review-rules`)
+- ✅ `lib/export-findings.js` – shared core module for both commands
+- ✅ Output format: `meta`, `summary`, `findings[]`, `rule_analysis{}` blocks
+- ✅ Default filter: deep-only (findings that have a Claude deep analysis result)
+- ✅ `--all` flag includes findings without deep analysis (`deep: null`)
+- ✅ `--severity` / `--rule` / `--scan` / `--output` filters
+- ✅ Per-rule FP rate stats: `fp_rate = false_positives / (confirmed + false_positives)`, no_verdict excluded
+- ✅ `high_fp_rules` in summary: rules with `fp_rate >= 0.5` and `sample_size >= 3`
+- ✅ `languages_scanned` derived from file extensions in findings (EXT_TO_LANG map)
+- ✅ Best-effort context lines read from source files at export time (falls back to snippet)
+- ✅ `sc review-rules` (internal, hidden from `sc --help` and README) adds `pattern` and `antipattern` (RegExp source strings) to each `rule_analysis` entry
 
 ### Scan storage
 - ✅ Per-scan JSON files in `~/.security-copilot/repos/{id}/scans/{scanId}.json`
@@ -139,7 +152,7 @@ Deliberately parked – needs careful design.
 - **Deep analysis in pre-push hook** (optional, with cost warning)
 - **IDE extension** (VS Code)
 - **NestJS decorator patterns** – rule additions
-- **`sc export` + merge** (UUID session IDs already in audit)
+- **`sc export-findings` merge** – `sc export-findings` is implemented; a complementary merge/import flow for aggregating results across machines is still parked
 - **Config signing** (supply chain protection)
 - **Minified file scanning** – currently skipped; accepted trade-off
 - **`sc report --from <date>`** – filter scans by date range (foundation exists)

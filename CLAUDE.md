@@ -119,6 +119,12 @@ Plugin API and signing design to be specified in a separate design session.
 | Fas 2 | Team value | Team dashboard, knowledge gaps, trend view, exception approvals |
 | Fas 3 | Professional add-ons | CRA/NIS2 reports, plugin API, commercial rule packs, rule signing |
 
+### Internal commands (not in README or sc --help)
+
+`sc review-rules` is an Activemind-internal command for rule quality analysis. It is registered with `program.addCommand(cmd, { hidden: true })` so it is invisible in `sc --help` and is not documented in README.md. It is discoverable only via `sc review-rules --help`.
+
+Both `sc export-findings` and `sc review-rules` share the same implementation in `lib/export-findings.js`. The only runtime difference is the `includeRuleInternals` flag: when `true` (review-rules), the `rule_analysis` block in the output JSON includes `pattern` and `antipattern` (RegExp source strings) from the raw rule definitions — intended for internal rule quality review. These fields are omitted entirely from customer-facing exports.
+
 ### Parked (not forgotten)
 - Activemind-hosted cloud central – deferred until local central is stable
 - `sc export` + merge – natural complement to push queue

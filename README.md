@@ -83,6 +83,10 @@ sc report --serve         # Linux / Firefox (starts local HTTP server)
 | `sc report --serve` | Serve report via local HTTP server |
 | `sc report --serve --index` | Always show report index page |
 | `sc report --scan <id>` | Generate report from a specific saved scan |
+| `sc export-findings` | Export findings from a scan to JSON for external review |
+| `sc export-findings --all` | Include all findings, not just those with deep analysis |
+| `sc export-findings --severity critical` | Filter exported findings by severity |
+| `sc export-findings --scan <id>` | Export from a specific saved scan |
 | `sc approve` | Create a reviewed exception for a finding |
 | `sc resolve` | Mark a finding as resolved |
 | `sc audit` | View scan history and audit trail |
@@ -205,6 +209,32 @@ Exceptions include a hash of the relevant code line. If the code changes, the ex
 
 ---
 
+## Exporting findings
+
+`sc export-findings` produces a self-contained JSON snapshot of findings from a completed scan — useful for sharing with an external reviewer without giving them access to the codebase.
+
+```bash
+# Export findings that have deep analysis results (default)
+sc export-findings
+
+# Export all findings regardless of deep analysis
+sc export-findings --all
+
+# Filter by severity or rule
+sc export-findings --severity critical
+sc export-findings --rule PHP-INJ-001
+
+# Export from a specific scan
+sc export-findings --scan 2026-03-17T132421
+
+# Specify output path
+sc export-findings --output /tmp/review-findings.json
+```
+
+The output file is named `sc-findings-{scanId}.json` in the current directory by default. It includes finding details, per-rule statistics, FP rates, and — when `--all` is used — findings that have no deep analysis (with `deep: null`).
+
+---
+
 ## Multi-machine setup
 
 See [INSTALL.md](INSTALL.md) for full instructions including tarball installation and shell configuration.
@@ -228,6 +258,7 @@ lib/
   report-index.js        ← HTTP server index page
   report-markdown.js     ← Markdown report generator
   report-json.js         ← JSON report generator
+  export-findings.js     ← Export findings to JSON for external review
   rules/                 ← Rule definitions per language
 docs/
   ARCHITECTURE.md        ← Product vision and technical architecture
