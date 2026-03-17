@@ -25,6 +25,7 @@
     "prepare": "chmod +x bin/security-copilot.js"
   },
   "dependencies": {
-    "commander": "^11.0.0"
+    "commander": "^11.0.0",
+    "@anthropic-ai/sdk": "^0.39.0"
   }
 }

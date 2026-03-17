@@ -24,6 +24,9 @@ block_on_high: true
 # Always report all findings, even if action is warn or skip
 report_all: true
 
+# Time to wait for deep analysis results before proceeding with commit/push (in milliseconds)
+deep_delay_ms: 2000
+
 # ── Rule overrides ───────────────────────────────────────────────
 # Override the action for specific rules: block | warn | report
 #
