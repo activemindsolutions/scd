@@ -329,6 +329,7 @@ program
   .option('--open',          'Open report in browser after generating (macOS/Windows)')
   .option('--serve',         'Serve report via local HTTP server and open in browser (works on all platforms)')
   .option('--port <port>',   'Port for --serve (default: random available port)')
+  .option('--index',         'Always show report index page (use with --serve)')
   .action(async (opts) => {
     const path = require('path');
     const fs   = require('fs');
