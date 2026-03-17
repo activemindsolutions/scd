@@ -1185,11 +1185,12 @@ program
   .option('--severity <level>', 'Filter by severity: critical, high, medium, exposure')
   .option('--rule <id>',        'Filter to a specific rule ID')
   .option('--all',              'Include all findings, not just those with deep analysis')
-  .option('--output <path>',    'Output file path (default: ./sc-findings-{scanId}.json)')
+  .option('--output <path>',    'Output file path (default: ~/.security-copilot/repos/{id}/exports/sc-findings-{scanId}.json)')
   .action(async (opts) => {
-    const path = require('path');
+    const path  = require('path');
+    const store = require('../lib/store');
     const { exportFindings } = require('../lib/export-findings');
-    const { loadCache, loadScan } = require('../lib/scan-cache');
+    const { loadCache } = require('../lib/scan-cache');
     const repoRoot = getRepoRoot();
 
     // Resolve scan ID first so we can use it in the default filename
@@ -1202,7 +1203,7 @@ program
     const defaultName = 'sc-findings-' + (resolvedScanId || 'scan') + '.json';
     const outputPath  = opts.output
       ? path.resolve(process.cwd(), opts.output)
-      : path.resolve(process.cwd(), defaultName);
+      : store.exportPath(repoRoot, defaultName);
 
     await exportFindings({
       repoRoot,
@@ -1227,9 +1228,10 @@ program
     .option('--severity <level>', 'Filter by severity: critical, high, medium, exposure')
     .option('--rule <id>',        'Filter to a specific rule ID')
     .option('--all',              'Include all findings, not just those with deep analysis')
-    .option('--output <path>',    'Output file path (default: ./sc-review-{scanId}.json)')
+    .option('--output <path>',    'Output file path (default: ~/.security-copilot/repos/{id}/exports/sc-review-{scanId}.json)')
     .action(async (opts) => {
-      const path = require('path');
+      const path  = require('path');
+      const store = require('../lib/store');
       const { exportFindings } = require('../lib/export-findings');
       const { loadCache } = require('../lib/scan-cache');
       const repoRoot = getRepoRoot();
@@ -1243,7 +1245,7 @@ program
       const defaultName = 'sc-review-' + (resolvedScanId || 'scan') + '.json';
       const outputPath  = opts.output
         ? path.resolve(process.cwd(), opts.output)
-        : path.resolve(process.cwd(), defaultName);
+        : store.exportPath(repoRoot, defaultName);
 
       await exportFindings({
         repoRoot,
