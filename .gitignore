@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Claude related settings and data
+.claude/
+
 # Store data – never commit scan history or configs
 .security-copilot/
 
