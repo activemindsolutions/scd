@@ -15,10 +15,14 @@ const { saveCache, loadCache, cacheAge } = require('../lib/scan-cache');
 
 const program = new Command();
 
+const pkg = require('../package.json');
+
+const { RULES_VERSION } = require('../lib/rule-registry');
+
 program
-  .name('security-copilot')
+  .name('sc')
   .description('Security Co-Pilot – AI-assisted security scanning')
-  .version('0.1.0');
+  .version(pkg.version + '  (rules ' + RULES_VERSION + ')');
 
 program
   .command('scan [targets...]')
@@ -1023,6 +1027,37 @@ function buildTitle(opts) {
   if (opts.search)   parts.push('search="' + opts.search + '"');
   return parts.join('  ');
 }
+
+
+// ── sc version ────────────────────────────────────────────────────────────
+program
+  .command('version')
+  .description('Show detailed version information')
+  .action(() => {
+    const os  = require('os');
+    const { getRegistry } = require('../lib/rule-registry');
+    const rules = getRegistry();
+
+    const BOLD  = '\x1b[1m';
+    const DIM   = '\x1b[90m';
+    const CYAN  = '\x1b[36m';
+    const RESET = '\x1b[0m';
+
+    const sevCount = (sev) => rules.filter(r => r.severity === sev).length;
+
+    console.log('\n' + BOLD + 'Security Co-Pilot' + RESET);
+    console.log(DIM + '─'.repeat(40) + RESET);
+    console.log('  CLI:    ' + BOLD + pkg.version + RESET);
+    console.log('  Rules:  ' + BOLD + RULES_VERSION + RESET +
+      DIM + '  (' + rules.length + ' rules' +
+      '  ·  CRITICAL: ' + sevCount('CRITICAL') +
+      '  HIGH: ' + sevCount('HIGH') +
+      '  MEDIUM: ' + sevCount('MEDIUM') +
+      '  EXPOSURE: ' + sevCount('EXPOSURE') + ')' + RESET);
+    console.log('  Node:   ' + DIM + process.version + RESET);
+    console.log('  OS:     ' + DIM + os.platform() + ' ' + os.arch() + RESET);
+    console.log();
+  });
 
 
 program.parse(process.argv);
