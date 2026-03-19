@@ -613,8 +613,10 @@ program
   .option('--show',             'Show current global configuration')
   .option('--central-url <url>',  'Set scd-server URL (enables push queue)')
   .option('--clear-central-url',  'Remove scd-server URL (disables push queue)')
+  .option('--token <token>',       'Set scd-server API token')
+  .option('--clear-token',         'Remove scd-server API token')
   .action((opts) => {
-    const { get, set, remove, maskApiKey, showConfig, getCentralUrl, setCentralUrl, removeCentralUrl, GLOBAL_CONFIG } =
+    const { get, set, remove, maskApiKey, showConfig, getCentralUrl, setCentralUrl, removeCentralUrl, getCentralToken, setCentralToken, removeCentralToken, GLOBAL_CONFIG } =
       require('../lib/global-config');
 
     const CYAN  = '\x1b[36m';
@@ -678,6 +680,30 @@ program
       process.exit(0);
     }
 
+    // ── --token <token> ───────────────────────────────────────────────────
+    if (opts.token) {
+      const token = opts.token.trim();
+      if (!token.startsWith('scd-')) {
+        console.error(`\n${RED}✗ Invalid token format – scd-server tokens start with scd-${RESET}\n`);
+        process.exit(1);
+      }
+      setCentralToken(token);
+      console.log(`\n${GREEN}✓ Token saved${RESET} → ${DIM}${GLOBAL_CONFIG}${RESET}`);
+      console.log(`  ${DIM}${token.slice(0, 12)}...${RESET}\n`);
+      process.exit(0);
+    }
+
+    // ── --clear-token ─────────────────────────────────────────────────────
+    if (opts.clearToken) {
+      const removed = removeCentralToken();
+      if (removed) {
+        console.log(`\n${GREEN}✓ Token removed${RESET} from ${DIM}${GLOBAL_CONFIG}${RESET}\n`);
+      } else {
+        console.log(`\n${DIM}No token to remove.${RESET}\n`);
+      }
+      process.exit(0);
+    }
+
     // ── --show (default if no flags) ──────────────────────────────────────
     const info = showConfig();
     const centralUrl = getCentralUrl();
@@ -701,13 +727,22 @@ program
     console.log(`  Central URL:  ${centralUrl ? GREEN + centralUrl : DIM + '(not set – push queue disabled)'}${RESET}`);
     console.log('');
     if (centralUrl) {
+      const token   = getCentralToken();
       const { queueSize, staleCount } = require('../lib/push-queue');
       const pending = queueSize();
       const stale   = staleCount();
+      console.log(`  Token:        ${token ? DIM + token.slice(0, 12) + '...' + RESET : RED + '(not set)' + RESET}`);
       console.log(`  Queue:        ${DIM}${pending} pending event(s)${stale > 0 ? '  ' + RED + stale + ' stale' + RESET : ''}${RESET}`);
+      console.log('');
       console.log(`  ${DIM}Clear URL:       scd configure --clear-central-url${RESET}`);
+      if (token) {
+        console.log(`  ${DIM}Clear token:     scd configure --clear-token${RESET}`);
+      } else {
+        console.log(`  ${DIM}Set token:       scd configure --token <token>${RESET}`);
+      }
     } else {
       console.log(`  ${DIM}Set server URL:  scd configure --central-url https://your-server:3000${RESET}`);
+      console.log(`  ${DIM}Then set token:  scd configure --token <token>${RESET}`);
     }
     console.log('');
   });
