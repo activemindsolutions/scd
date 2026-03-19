@@ -1,4 +1,4 @@
-# Security Co-Pilot – Claude Project Instructions
+# Secure Code by Design – Claude Project Instructions
 
 ## Who I am
 Mikael Jansson, penetration tester and security consultant at Activemind Solutions AB (Sweden).
@@ -6,7 +6,7 @@ CEH certified. Works exclusively within authorized, legal boundaries.
 Philosophy: "360-degree security thinking / think like a hacker."
 
 ## What this project is
-**Security Co-Pilot** – a Node.js CLI tool (`sc`) that automatically scans code for security
+**Secure Code by Design** – a Node.js CLI tool (`scd`) that automatically scans code for security
 vulnerabilities, targeting SMB companies using AI coding tools (Claude Code, GitHub Copilot, Cursor)
 who lack in-house security expertise.
 
@@ -14,20 +14,20 @@ who lack in-house security expertise.
 production so that pentests can focus on harder problems.
 
 ## Repository
-- GitHub: `git@github.com:activemindsolutions/security-copilot.git`
-- Local (primary dev): `~/Projects/security-copilot`
+- GitHub: `git@github.com:activemindsolutions/scd.git`
+- Local (primary dev): `~/Projects/scd`
 - Installed via: `npm link` (dev) or `git clone && npm install && npm link` (other machines)
-- Command: `sc`
+- Command: `scd`
 
 ## Tech stack
 - Node.js 18+ (CommonJS, no transpilation)
 - commander@11 (CLI framework)
 - No other runtime dependencies – deliberately lightweight
-- Claude API (Anthropic) for deep analysis features (`sc insights --deep`, `sc scan --deep`)
+- Claude API (Anthropic) for deep analysis features (`scd insights --deep`, `scd scan --deep`)
 
 ## Key design principles
 1. **Zero repo footprint** – SC never writes files to the customer's repo
-2. **Global store** – all data in `~/.security-copilot/repos/{repoId}/`
+2. **Global store** – all data in `~/.scd/repos/{repoId}/`
 3. **repoId** = SHA-256 of git remote URL (stable across re-clones), fallback = SHA-256 of abs path
 4. **English only** – all rule text, CLI output, comments in English
 5. **Rule IDs are stable** – never renumber or rename existing rule IDs
@@ -88,12 +88,12 @@ The commercial server runs entirely in the customer's infrastructure. No data le
 - License key contains: customer ID, tier, seats, expiry, Ed25519 signature
 
 ### Push queue architecture
-Each `sc` installation pushes audit events to sc-server via a local offline queue:
+Each `scd` installation pushes audit events to sc-server via a local offline queue:
 - Events always written to `audit.log` first (existing behavior, unchanged)
-- Events also queued in `~/.security-copilot/push-queue.jsonl`
-- Push worker triggers on every `sc` command (not a daemon)
+- Events also queued in `~/.scd/push-queue.jsonl`
+- Push worker triggers on every `scd` command (not a daemon)
 - Sends batch when central is reachable, queues silently when not
-- 7-day grace before stale warning; stale events reported by `sc doctor`
+- 7-day grace before stale warning; stale events reported by `scd doctor`
 - sc-server API: `POST /api/v1/events/batch`, `GET /api/v1/health`
 
 ### Team dashboard (Fas 2)
@@ -119,13 +119,13 @@ Plugin API and signing design to be specified in a separate design session.
 | Fas 2 | Team value | Team dashboard, knowledge gaps, trend view, exception approvals |
 | Fas 3 | Professional add-ons | CRA/NIS2 reports, plugin API, commercial rule packs, rule signing |
 
-### Internal commands (not in README or sc --help)
+### Internal commands (not in README or scd --help)
 
-`sc review-rules` is an Activemind-internal command for rule quality analysis. It is registered with `program.addCommand(cmd, { hidden: true })` so it is invisible in `sc --help` and is not documented in README.md. It is discoverable only via `sc review-rules --help`.
+`scd review-rules` is an Activemind-internal command for rule quality analysis. It is registered with `program.addCommand(cmd, { hidden: true })` so it is invisible in `scd --help` and is not documented in README.md. It is discoverable only via `scd review-rules --help`.
 
-Both `sc export-findings` and `sc review-rules` share the same implementation in `lib/export-findings.js`. The only runtime difference is the `includeRuleInternals` flag: when `true` (review-rules), the `rule_analysis` block in the output JSON includes `pattern` and `antipattern` (RegExp source strings) from the raw rule definitions — intended for internal rule quality review. These fields are omitted entirely from customer-facing exports.
+Both `scd export-findings` and `scd review-rules` share the same implementation in `lib/export-findings.js`. The only runtime difference is the `includeRuleInternals` flag: when `true` (review-rules), the `rule_analysis` block in the output JSON includes `pattern` and `antipattern` (RegExp source strings) from the raw rule definitions — intended for internal rule quality review. These fields are omitted entirely from customer-facing exports.
 
 ### Parked (not forgotten)
 - Activemind-hosted cloud central – deferred until local central is stable
-- `sc export` + merge – natural complement to push queue
+- `scd export` + merge – natural complement to push queue
 - Config signing – next after push queue is implemented

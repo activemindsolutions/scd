@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Security Copilot – CLI Agent
+ * scd – CLI entry point
  * Config-aware with audit logging
  */
 
@@ -20,13 +20,13 @@ const pkg = require('../package.json');
 const { RULES_VERSION } = require('../lib/rule-registry');
 
 program
-  .name('sc')
-  .description('Security Co-Pilot – AI-assisted security scanning')
+  .name('scd')
+  .description('Secure Code by Design – automated security scanning')
   .version(pkg.version + '  (rules ' + RULES_VERSION + ')');
 
 program
   .command('scan [targets...]')
-  .description('Kör säkerhetsscanning – hook-läge (automatiskt) eller manuellt')
+  .description('Run security scan – hook mode (automatic) or manual')
   .option('--hook <type>', 'Hook-läge: pre-commit eller pre-push (körs av git hooks)')
   .option('--lang <lang>', 'Begränsa till språk: js, ts, py, php ...')
   .option('--severity <level>', 'Visa bara: CRITICAL, HIGH, EXPOSURE ...')
@@ -45,12 +45,12 @@ program
     if (opts.hook) {
       const files = await getChangedFiles(opts.hook);
       if (files.length === 0) {
-        console.log('\x1b[90m[Security Copilot] Inga filer att scanna.\x1b[0m');
+        console.log('\x1b[90m[scd] No files to scan.\x1b[0m');
         process.exit(0);
       }
 
       console.log(`\n\x1b[36m╔══════════════════════════════════════════╗\x1b[0m`);
-      console.log(`\x1b[36m║       Security Copilot v0.1.0            ║\x1b[0m`);
+      console.log(`\x1b[36m║         Secure Code by Design v0.1.0       ║\x1b[0m`);
       console.log(`\x1b[36m╚══════════════════════════════════════════╝\x1b[0m`);
       console.log(`\x1b[90m Scanning ${files.length} file(s) – hook: ${opts.hook}\x1b[0m\n`);
 
@@ -129,7 +129,7 @@ program
     }
     const langLabel = opts.lang ? ` [${opts.lang}]` : '';
     console.log(`\n\x1b[36m╔══════════════════════════════════════════╗\x1b[0m`);
-    console.log(`\x1b[36m║       Security Copilot v0.1.0            ║\x1b[0m`);
+    console.log(`\x1b[36m║         Secure Code by Design v0.1.0       ║\x1b[0m`);
     console.log(`\x1b[36m╚══════════════════════════════════════════╝\x1b[0m`);
     console.log(`\x1b[90m Manuell scanning${langLabel}: ${scanTarget}\x1b[0m`);
     console.log(`\x1b[90m ${files.length} fil(er) hittade${skipped.length > 0 ? ` · ${skipped.length} hoppades över` : ''}\x1b[0m\n`);
@@ -228,7 +228,7 @@ program
 
       if (!apiKey) {
         console.log('\n\x1b[31m❌ --deep requires an Anthropic API key.\x1b[0m');
-        console.log('\x1b[90m   Run: sc configure --api-key sk-ant-...\x1b[0m\n');
+        console.log('\x1b[90m   Run: scd configure --api-key sk-ant-...\x1b[0m\n');
         process.exit(0);
       }
 
@@ -271,13 +271,13 @@ program
     process.exit(0);
   });
 
-program
-  .command('install')
+const installCmd = new Command('install')
   .description('Install global git hooks')
   .action(async () => {
     const { install } = require('../lib/installer');
     await install();
   });
+program.addCommand(installCmd, { hidden: true });
 
 program
   .command('doctor')
@@ -312,7 +312,7 @@ program
 
 program
   .command('resolve')
-  .description('Markera ett EXPOSURE-finding som hanterat på tjänstnivå')
+  .description('Mark an EXPOSURE finding as handled at service level')
   .option('--rule <id>', 'Regel-ID (t.ex. FRONT-001)')
   .option('--file <path>', 'Fil')
   .option('--line <n>', 'Radnummer')
@@ -325,7 +325,7 @@ program
 
 program
   .command('init')
-  .description('Initialisera Security Copilot i detta repo – skapar .securityagent.yml')
+  .description('Initialise Secure Code by Design in this repo and install git hooks')
   .action(async () => {
     const { initRepo } = require('../lib/init-repo');
     const repoRoot = getRepoRoot();
@@ -342,7 +342,7 @@ program
   .option('--serve',         'Serve report via local HTTP server and open in browser (works on all platforms)')
   .option('--port <port>',   'Port for --serve (default: random available port)')
   .option('--index',         'Always show report index page (use with --serve)')
-  .option('--scan <id>',     'Generate report from a specific scan ID (sc store --scans to list)')
+  .option('--scan <id>',     'Generate report from a specific scan ID (scd store --scans to list)')
   .action(async (opts) => {
     const path = require('path');
     const fs   = require('fs');
@@ -354,14 +354,14 @@ program
       cache = loadScan(repoRoot, opts.scan);
       if (!cache) {
         console.error('\n\x1b[31m✗ Scan not found: ' + opts.scan + '\x1b[0m');
-        console.error('  Run \x1b[36msc store --scans\x1b[0m to list available scans.\n');
+        console.error('  Run \x1b[36mscd store --scans\x1b[0m to list available scans.\n');
         process.exit(1);
       }
     } else {
       cache = loadCache(repoRoot);
       if (!cache) {
         console.error('\n\x1b[31m✗ No saved scan found.\x1b[0m');
-        console.error("  Run 'sc scan' first to generate findings to report from.\n");
+        console.error("  Run 'scd scan' first to generate findings to report from.\n");
         process.exit(1);
       }
     }
@@ -379,7 +379,7 @@ program
     const ext     = fmt === 'markdown' ? 'md' : fmt;
     const defaultName = 'security-report-' + scanIdStr + '.' + ext;
 
-    // Default: store reports in ~/.security-copilot/repos/{id}/reports/
+    // Default: store reports in ~/.scd/repos/{id}/reports/
     // Override with --output for explicit path
     const outPath = opts.output
       ? path.resolve(process.cwd(), opts.output)
@@ -574,7 +574,7 @@ program
       apiKey = getApiKey();
       if (!apiKey) {
         console.log('\n\x1b[31m❌ --deep requires an Anthropic API key.\x1b[0m');
-        console.log('\x1b[90m   sc configure --api-key sk-ant-...\x1b[0m\n');
+        console.log('\x1b[90m   scd configure --api-key sk-ant-...\x1b[0m\n');
         process.exit(1);
       }
       console.log('\x1b[2m  Sending statistics to Claude API…\x1b[0m');
@@ -588,7 +588,7 @@ program
 
 program
   .command('configure')
-  .description('Hantera global Security Co-Pilot-konfiguration (API-nyckel m.m.)')
+  .description('Manage global configuration (API key etc.)')
   .option('--api-key <key>',    'Spara Anthropic API-nyckel för --deep analys')
   .option('--clear-api-key',    'Ta bort sparad API-nyckel')
   .option('--show',             'Visa aktuell global konfiguration')
@@ -618,7 +618,7 @@ program
       set('ANTHROPIC_API_KEY', key);
       console.log(`\n${GREEN}✓ API-nyckel sparad${RESET} → ${DIM}${GLOBAL_CONFIG}${RESET}`);
       console.log(`  ${DIM}${maskApiKey(key)}${RESET}`);
-      console.log(`\n  ${DIM}Använd 'sc scan --deep' för att aktivera Claude-analys.${RESET}\n`);
+      console.log(`\n  ${DIM}Use 'scd scan --deep' to enable Claude analysis.${RESET}\n`);
       process.exit(0);
     }
 
@@ -636,7 +636,7 @@ program
     // ── --show (default om inga flaggor) ──────────────────────────────────
     const info = showConfig();
 
-    console.log(`\n${CYAN}${BOLD}Security Co-Pilot – Global konfiguration${RESET}\n`);
+    console.log(`\n${CYAN}${BOLD}Secure Code by Design – Global configuration${RESET}\n`);
     console.log(`  Konfigfil:    ${DIM}${info.configPath}${RESET}`);
     console.log(`  Filen finns:  ${info.exists ? GREEN + 'ja' : DIM + 'nej (inga inställningar sparade)'}${RESET}`);
     console.log('');
@@ -645,11 +645,11 @@ program
     console.log('');
 
     if (!info.apiKeySource || info.apiKeySource === '(inte satt)') {
-      console.log(`  ${DIM}Sätt API-nyckel:  sc configure --api-key sk-ant-...${RESET}`);
+      console.log(`  ${DIM}Set API key:     scd configure --api-key sk-ant-...${RESET}`);
       console.log(`  ${DIM}Alternativt:     export ANTHROPIC_API_KEY="sk-ant-..."${RESET}`);
     } else {
-      console.log(`  ${DIM}Rensa nyckel:    sc configure --clear-api-key${RESET}`);
-      console.log(`  ${DIM}Djupanalys:      sc scan --deep${RESET}`);
+      console.log(`  ${DIM}Clear key:       scd configure --clear-api-key${RESET}`);
+      console.log(`  ${DIM}Deep analysis:   scd scan --deep${RESET}`);
     }
     console.log('');
   });
@@ -657,10 +657,10 @@ program
 
 
 
-// ── sc list ────────────────────────────────────────────────────────────────
+// ── scd list ────────────────────────────────────────────────────────────────
 program
   .command('list')
-  .description('List all repos known to Security Co-Pilot')
+  .description('List all repos registered with Secure Code by Design')
   .option('--json', 'Output as JSON')
   .action((opts) => {
     const store = require('../lib/store');
@@ -672,13 +672,13 @@ program
     }
 
     if (repos.length === 0) {
-      console.log('\n\x1b[90m No repos found. Run sc init in a project to get started.\x1b[0m\n');
+      console.log('\n\x1b[90m No repos found. Run scd init in a project to get started.\x1b[0m\n');
       return;
     }
 
     const { cacheAge } = require('../lib/scan-cache');
 
-    console.log('\n\x1b[1mSecurity Co-Pilot – Known repos\x1b[0m');
+    console.log('\n\x1b[1mSecure Code by Design – Known repos\x1b[0m');
     console.log('\x1b[90m' + '─'.repeat(72) + '\x1b[0m');
 
     const namW = 24, scanW = 18, findW = 10;
@@ -714,7 +714,7 @@ program
   });
 
 
-// ── sc store ───────────────────────────────────────────────────────────────
+// ── scd store ───────────────────────────────────────────────────────────────
 program
   .command('store')
   .description('Show and navigate the store for the current repo')
@@ -759,13 +759,13 @@ program
         meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
       } catch {
         console.log('\n\x1b[33m No meta.json found for this repo.\x1b[0m');
-        console.log(DIM + ' Run sc init to register this repo.\n' + RESET);
+        console.log(DIM + ' Run scd init to register this repo.\n' + RESET);
         return;
       }
 
       const { cacheAge } = require('../lib/scan-cache');
 
-      console.log('\n' + BOLD + 'Security Co-Pilot – Repo meta' + RESET);
+      console.log('\n' + BOLD + 'Secure Code by Design – Repo meta' + RESET);
       console.log(DIM + '─'.repeat(52) + RESET + '\n');
 
       const row = (label, value, color) =>
@@ -818,7 +818,7 @@ program
       const RESET = '\x1b[0m';
 
       if (scans.length === 0) {
-        console.log('\n' + DIM + ' No scans found. Run sc scan first.\n' + RESET);
+        console.log('\n' + DIM + ' No scans found. Run scd scan first.\n' + RESET);
         return;
       }
 
@@ -840,7 +840,7 @@ program
       }
       console.log(DIM + '─'.repeat(70) + RESET);
       console.log('  ' + scans.length + ' scan' + (scans.length !== 1 ? 's' : '') + ' saved\n');
-      console.log(DIM + '  sc report --scan <id>   generate report from a specific scan\n' + RESET);
+      console.log(DIM + '  scd report --scan <id>   generate report from a specific scan\n' + RESET);
       return;
     }
 
@@ -871,7 +871,7 @@ program
       }
 
       const issues = results.filter(r => r.status !== 'OK');
-      console.log('\n\x1b[1mSecurity Co-Pilot – Store verify\x1b[0m');
+      console.log('\n\x1b[1mSecure Code by Design – Store verify\x1b[0m');
       console.log('\x1b[90m' + '─'.repeat(60) + '\x1b[0m');
       console.log('\x1b[90m Checking ' + results.length + ' repo' + (results.length !== 1 ? 's' : '') + ' in store…\x1b[0m');
 
@@ -887,7 +887,7 @@ program
     if (opts.reports) {
       const reports = store.listReports(repoRoot);
       if (reports.length === 0) {
-        console.log('\n\x1b[90m No reports found. Run sc report to generate one.\x1b[0m\n');
+        console.log('\n\x1b[90m No reports found. Run scd report to generate one.\x1b[0m\n');
         return;
       }
       console.log('\n\x1b[1mSaved reports\x1b[0m  \x1b[90m' + dir + '/reports\x1b[0m\n');
@@ -927,7 +927,7 @@ program
       catch { return null; }
     })();
 
-    console.log('\n\x1b[1mSecurity Co-Pilot – Store\x1b[0m');
+    console.log('\n\x1b[1mSecure Code by Design – Store\x1b[0m');
     console.log('\x1b[90m' + '─'.repeat(52) + '\x1b[0m\n');
     console.log('  Repo:      \x1b[1m' + (meta?.name || path.basename(repoRoot)) + '\x1b[0m');
     if (identity.type === 'remote') {
@@ -951,22 +951,22 @@ program
     const reports = store.listReports(repoRoot);
     console.log('  Reports:   \x1b[90m' + reports.length + ' saved\x1b[0m');
     console.log();
-    console.log('  \x1b[90msc store --reports          list saved reports\x1b[0m');
-    console.log('  \x1b[90msc store --open             open in file manager\x1b[0m');
-    console.log('  \x1b[90msc store --open-reports     open reports folder\x1b[0m');
-    console.log('  \x1b[90msc store --path             print path (for scripting)\x1b[0m');
-    console.log('  \x1b[90msc store --show             show full meta info for current repo\x1b[0m');
-    console.log('  \x1b[90msc store --scans            list all saved scans\x1b[0m');
-    console.log('  \x1b[90msc store --verify           verify all repos exist on disk\x1b[0m');
-    console.log('  \x1b[90msc store --verify --clean   interactive cleanup of stale repos\x1b[0m\n');
+    console.log('  \x1b[90mscd store --reports          list saved reports\x1b[0m');
+    console.log('  \x1b[90mscd store --open             open in file manager\x1b[0m');
+    console.log('  \x1b[90mscd store --open-reports     open reports folder\x1b[0m');
+    console.log('  \x1b[90mscd store --path             print path (for scripting)\x1b[0m');
+    console.log('  \x1b[90mscd store --show             show full meta info for current repo\x1b[0m');
+    console.log('  \x1b[90mscd store --scans            list all saved scans\x1b[0m');
+    console.log('  \x1b[90mscd store --verify           verify all repos exist on disk\x1b[0m');
+    console.log('  \x1b[90mscd store --verify --clean   interactive cleanup of stale repos\x1b[0m\n');
   });
 
 
 
-// ── sc rules ───────────────────────────────────────────────────────────────
+// ── scd rules ───────────────────────────────────────────────────────────────
 program
   .command('rules')
-  .description('List, search and inspect Security Co-Pilot rules')
+  .description('List, search and inspect security rules')
   .option('--lang <langs>',     'Filter by language (js, ts, py, php, cs, aspx, all) — comma-separated')
   .option('--severity <level>', 'Filter by severity (critical, high, medium, exposure)')
   .option('--id <id>',          'Show full detail for a specific rule ID (e.g. INFRA-001)')
@@ -1005,7 +1005,7 @@ program
     if (opts.stats) {
       const rules = queryRules({ lang: opts.lang, severity: opts.severity, search: opts.search });
       const s = getStats(rules);
-      console.log('\n' + BOLD + 'Security Co-Pilot – Rule stats' + RESET);
+      console.log('\n' + BOLD + 'Secure Code by Design – Rule stats' + RESET);
       console.log(DIM + '─'.repeat(50) + RESET + '\n');
       console.log('  Total rules: ' + BOLD + s.total + RESET + '\n');
 
@@ -1035,7 +1035,7 @@ program
       const rules = queryRules({ id: opts.id });
       if (rules.length === 0) {
         console.log('\n\x1b[33m Rule not found: ' + opts.id + RESET);
-        console.log(DIM + ' Use sc rules --search <term> to find rules.\n' + RESET);
+        console.log(DIM + ' Use scd rules --search <term> to find rules.\n' + RESET);
         process.exit(1);
       }
       const r = rules[0];
@@ -1078,7 +1078,7 @@ program
     }
 
     const title = buildTitle(opts);
-    console.log('\n' + BOLD + 'Security Co-Pilot – Rules' + (title ? '  ' + DIM + title + RESET : '') + RESET);
+    console.log('\n' + BOLD + 'Secure Code by Design – Rules' + (title ? '  ' + DIM + title + RESET : '') + RESET);
     console.log(DIM + '─'.repeat(90) + RESET);
 
     // Column widths
@@ -1117,11 +1117,11 @@ program
     console.log('  ' + rules.length + ' rule' + (rules.length !== 1 ? 's' : '') +
       (rules.length < getRegistry().length ? ' (filtered from ' + getRegistry().length + ' total)' : ' total') + '\n');
     console.log(DIM +
-      '  sc rules --id <ID>          full detail for a rule\n' +
-      '  sc rules --lang php         filter by language\n' +
-      '  sc rules --severity critical filter by severity\n' +
-      '  sc rules --search <term>    free-text search\n' +
-      '  sc rules --stats            counts by severity / language / category\n' +
+      '  scd rules --id <ID>          full detail for a rule\n' +
+      '  scd rules --lang php         filter by language\n' +
+      '  scd rules --severity critical filter by severity\n' +
+      '  scd rules --search <term>    free-text search\n' +
+      '  scd rules --stats            counts by severity / language / category\n' +
       RESET);
   });
 
@@ -1146,7 +1146,7 @@ function buildTitle(opts) {
 }
 
 
-// ── sc version ────────────────────────────────────────────────────────────
+// ── scd version ────────────────────────────────────────────────────────────
 program
   .command('version')
   .description('Show detailed version information')
@@ -1162,7 +1162,7 @@ program
 
     const sevCount = (sev) => rules.filter(r => r.severity === sev).length;
 
-    console.log('\n' + BOLD + 'Security Co-Pilot' + RESET);
+    console.log('\n' + BOLD + 'Secure Code by Design' + RESET);
     console.log(DIM + '─'.repeat(40) + RESET);
     console.log('  CLI:    ' + BOLD + pkg.version + RESET);
     console.log('  Rules:  ' + BOLD + RULES_VERSION + RESET +
@@ -1177,7 +1177,7 @@ program
   });
 
 
-// ── sc export-findings ─────────────────────────────────────────────────────
+// ── scd export-findings ─────────────────────────────────────────────────────
 program
   .command('export-findings')
   .description('Export findings from a scan for external review')
@@ -1185,7 +1185,7 @@ program
   .option('--severity <level>', 'Filter by severity: critical, high, medium, exposure')
   .option('--rule <id>',        'Filter to a specific rule ID')
   .option('--all',              'Include all findings, not just those with deep analysis')
-  .option('--output <path>',    'Output file path (default: ~/.security-copilot/repos/{id}/exports/sc-findings-{scanId}.json)')
+  .option('--output <path>',    'Output file path (default: ~/.scd/repos/{id}/exports/scd-findings-{scanId}.json)')
   .action(async (opts) => {
     const path  = require('path');
     const store = require('../lib/store');
@@ -1200,7 +1200,7 @@ program
       if (latest) resolvedScanId = latest.scanId;
     }
 
-    const defaultName = 'sc-findings-' + (resolvedScanId || 'scan') + '.json';
+    const defaultName = 'scd-findings-' + (resolvedScanId || 'scan') + '.json';
     const outputPath  = opts.output
       ? path.resolve(process.cwd(), opts.output)
       : store.exportPath(repoRoot, defaultName);
@@ -1218,7 +1218,7 @@ program
   });
 
 
-// ── sc review-rules (Activemind-internal, hidden from sc --help) ───────────
+// ── scd review-rules (Activemind-internal, hidden from scd --help) ───────────
 {
   const { Command } = require('commander');
   const reviewCmd = new Command('review-rules');
@@ -1228,7 +1228,7 @@ program
     .option('--severity <level>', 'Filter by severity: critical, high, medium, exposure')
     .option('--rule <id>',        'Filter to a specific rule ID')
     .option('--all',              'Include all findings, not just those with deep analysis')
-    .option('--output <path>',    'Output file path (default: ~/.security-copilot/repos/{id}/exports/sc-review-{scanId}.json)')
+    .option('--output <path>',    'Output file path (default: ~/.scd/repos/{id}/exports/scd-review-{scanId}.json)')
     .action(async (opts) => {
       const path  = require('path');
       const store = require('../lib/store');
@@ -1242,7 +1242,7 @@ program
         if (latest) resolvedScanId = latest.scanId;
       }
 
-      const defaultName = 'sc-review-' + (resolvedScanId || 'scan') + '.json';
+      const defaultName = 'scd-review-' + (resolvedScanId || 'scan') + '.json';
       const outputPath  = opts.output
         ? path.resolve(process.cwd(), opts.output)
         : store.exportPath(repoRoot, defaultName);

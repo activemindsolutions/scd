@@ -1,8 +1,8 @@
-# Security Co-Pilot
+# Secure Code by Design
 
 > Automated security scanning for development teams using AI coding tools.
 
-Security Co-Pilot (`sc`) is a CLI tool that catches security vulnerabilities before they reach production — running quietly in the background via git hooks and on-demand scans. Built for SMB companies using AI coding tools (Claude Code, GitHub Copilot, Cursor) who generate code faster than their security awareness can keep up with.
+Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilities before they reach production — running quietly in the background via git hooks and on-demand scans. Built for SMB companies using AI coding tools (Claude Code, GitHub Copilot, Cursor) who generate code faster than their security awareness can keep up with.
 
 **Not a replacement for penetration testing.** It minimizes the number of vulnerabilities that reach production so that pentests can focus on harder problems.
 
@@ -33,8 +33,8 @@ Security Co-Pilot (`sc`) is a CLI tool that catches security vulnerabilities bef
 ## Installation
 
 ```bash
-git clone git@github.com:activemindsolutions/security-copilot.git
-cd security-copilot
+git clone git@github.com:activemindsolutions/scd.git
+cd scd
 npm install
 npm link
 ```
@@ -42,8 +42,8 @@ npm link
 ### Verify
 
 ```bash
-sc --version
-sc doctor
+scd --version
+scd doctor
 ```
 
 ---
@@ -53,20 +53,20 @@ sc doctor
 ```bash
 # Register a project and install git hooks
 cd /path/to/your/project
-sc init
+scd init
 
 # Run a full security scan
-sc scan
+scd scan
 
 # Run with AI deep analysis
-sc scan --deep
+scd scan --deep
 
 # Generate an HTML report from the last scan
-sc report
+scd report
 
 # Open the report in your browser
-sc report --open          # macOS / Windows
-sc report --serve         # Linux / Firefox (starts local HTTP server)
+scd report --open          # macOS / Windows
+scd report --serve         # Linux / Firefox (starts local HTTP server)
 ```
 
 ---
@@ -75,36 +75,36 @@ sc report --serve         # Linux / Firefox (starts local HTTP server)
 
 | Command | Description |
 |---|---|
-| `sc init` | Register repo and install git hooks |
-| `sc scan [target]` | Run a full security scan |
-| `sc scan --deep` | Scan with Claude API deep analysis |
-| `sc scan --deep --deep-delay <ms>` | Add delay between API calls (rate limit prevention) |
-| `sc report` | Generate report from last scan (HTML default) |
-| `sc report --serve` | Serve report via local HTTP server |
-| `sc report --serve --index` | Always show report index page |
-| `sc report --scan <id>` | Generate report from a specific saved scan |
-| `sc export-findings` | Export findings from a scan to JSON for external review |
-| `sc export-findings --all` | Include all findings, not just those with deep analysis |
-| `sc export-findings --severity critical` | Filter exported findings by severity |
-| `sc export-findings --scan <id>` | Export from a specific saved scan |
-| `sc approve` | Create a reviewed exception for a finding |
-| `sc resolve` | Mark a finding as resolved |
-| `sc audit` | View scan history and audit trail |
-| `sc insights` | Analyze behavioral patterns from audit log |
-| `sc rules` | List all security rules |
-| `sc rules --lang php` | Filter rules by language |
-| `sc rules --id INFRA-001` | Show full detail for a rule |
-| `sc rules --search "injection"` | Free-text search across rules |
-| `sc rules --stats` | Rule counts by severity and language |
-| `sc list` | List all repos registered in store |
-| `sc store` | Show store info for current repo |
-| `sc store --show` | Full metadata for current repo |
-| `sc store --scans` | List all saved scans |
-| `sc store --verify` | Verify all repos exist on disk |
-| `sc store --verify --clean` | Interactive cleanup of missing/stale repos |
-| `sc configure --api-key` | Set Claude API key for deep analysis |
-| `sc version` | Detailed version info |
-| `sc doctor` | Verify installation and configuration |
+| `scd init` | Register repo and install git hooks |
+| `scd scan [target]` | Run a full security scan |
+| `scd scan --deep` | Scan with Claude API deep analysis |
+| `scd scan --deep --deep-delay <ms>` | Add delay between API calls (rate limit prevention) |
+| `scd report` | Generate report from last scan (HTML default) |
+| `scd report --serve` | Serve report via local HTTP server |
+| `scd report --serve --index` | Always show report index page |
+| `scd report --scan <id>` | Generate report from a specific saved scan |
+| `scd export-findings` | Export findings from a scan to JSON for external review |
+| `scd export-findings --all` | Include all findings, not just those with deep analysis |
+| `scd export-findings --severity critical` | Filter exported findings by severity |
+| `scd export-findings --scan <id>` | Export from a specific saved scan |
+| `scd approve` | Create a reviewed exception for a finding |
+| `scd resolve` | Mark a finding as resolved |
+| `scd audit` | View scan history and audit trail |
+| `scd insights` | Analyze behavioral patterns from audit log |
+| `scd rules` | List all security rules |
+| `scd rules --lang php` | Filter rules by language |
+| `scd rules --id INFRA-001` | Show full detail for a rule |
+| `scd rules --search "injection"` | Free-text search across rules |
+| `scd rules --stats` | Rule counts by severity and language |
+| `scd list` | List all repos registered in store |
+| `scd store` | Show store info for current repo |
+| `scd store --show` | Full metadata for current repo |
+| `scd store --scans` | List all saved scans |
+| `scd store --verify` | Verify all repos exist on disk |
+| `scd store --verify --clean` | Interactive cleanup of missing/stale repos |
+| `scd configure --api-key` | Set Claude API key for deep analysis |
+| `scd version` | Detailed version info |
+| `scd doctor` | Verify installation and configuration |
 
 ---
 
@@ -129,7 +129,7 @@ Covers OWASP Top 10 categories including Injection, Broken Access Control, Crypt
 
 ### Git hooks
 
-`sc init` configures git to use a shared hooks directory (`~/.security-copilot/hooks`):
+`scd init` configures git to use a shared hooks directory (`~/.scd/hooks`):
 
 ```
 pre-commit  → fast secrets scan (blocks CRITICAL findings)
@@ -141,7 +141,7 @@ pre-push    → full OWASP scan  (blocks CRITICAL + HIGH findings)
 All scan data, configs and reports are stored outside your repository:
 
 ```
-~/.security-copilot/
+~/.scd/
 ├── config                    ← API key
 └── repos/
     └── {repoId}/
@@ -160,13 +160,13 @@ All scan data, configs and reports are stored outside your repository:
 Every scan is saved as an individual file with a timestamp ID (`2026-03-17T132421`). Deep analysis results are stored alongside findings in the same file — running a new scan without `--deep` never loses previous deep data.
 
 ```bash
-sc store --scans                      # list all saved scans
-sc report --scan 2026-03-17T091500    # regenerate report from earlier scan
+scd store --scans                      # list all saved scans
+scd report --scan 2026-03-17T091500    # regenerate report from earlier scan
 ```
 
 ### Deep analysis
 
-`sc scan --deep` sends findings to Claude API for AI-powered analysis. What is sent per finding:
+`scd scan --deep` sends findings to Claude API for AI-powered analysis. What is sent per finding:
 
 - The filename
 - Rule ID, name, severity, line number
@@ -182,7 +182,7 @@ For large repos, configure a delay to avoid rate limits:
 deep_delay_ms: 2000   # 2 second pause between files
 ```
 
-Or override per-run: `sc scan --deep --deep-delay 3000`
+Or override per-run: `scd scan --deep --deep-delay 3000`
 
 ### Project configuration
 
@@ -199,10 +199,10 @@ block_on_high: true
 
 ## Exception management
 
-Exceptions for accepted findings are managed in the store config — never as source code comments. Comments like `// sc-ignore` leak information about vulnerabilities to anyone reading the code.
+Exceptions for accepted findings are managed in the store config — never as source code comments. Comments like `// scd-ignore` leak information about vulnerabilities to anyone reading the code.
 
 ```bash
-sc approve --rule FRONT-001 --file src/maps/config.js --line 12
+scd approve --rule FRONT-001 --file src/maps/config.js --line 12
 ```
 
 Exceptions include a hash of the relevant code line. If the code changes, the exception requires re-approval automatically.
@@ -211,27 +211,27 @@ Exceptions include a hash of the relevant code line. If the code changes, the ex
 
 ## Exporting findings
 
-`sc export-findings` produces a self-contained JSON snapshot of findings from a completed scan — useful for sharing with an external reviewer without giving them access to the codebase.
+`scd export-findings` produces a self-contained JSON snapshot of findings from a completed scan — useful for sharing with an external reviewer without giving them access to the codebase.
 
 ```bash
 # Export findings that have deep analysis results (default)
-sc export-findings
+scd export-findings
 
 # Export all findings regardless of deep analysis
-sc export-findings --all
+scd export-findings --all
 
 # Filter by severity or rule
-sc export-findings --severity critical
-sc export-findings --rule PHP-INJ-001
+scd export-findings --severity critical
+scd export-findings --rule PHP-INJ-001
 
 # Export from a specific scan
-sc export-findings --scan 2026-03-17T132421
+scd export-findings --scan 2026-03-17T132421
 
 # Specify output path
-sc export-findings --output /tmp/review-findings.json
+scd export-findings --output /tmp/review-findings.json
 ```
 
-The output file is named `sc-findings-{scanId}.json` in the current directory by default. It includes finding details, per-rule statistics, FP rates, and — when `--all` is used — findings that have no deep analysis (with `deep: null`).
+The output file is named `scd-findings-{scanId}.json` in the current directory by default. It includes finding details, per-rule statistics, FP rates, and — when `--all` is used — findings that have no deep analysis (with `deep: null`).
 
 ---
 
@@ -245,35 +245,35 @@ See [INSTALL.md](INSTALL.md) for full instructions including tarball installatio
 
 ```
 bin/
-  security-copilot.js    ← CLI entry point (all sc commands)
+  scd.js               ← CLI entry point (all scd commands)
 lib/
-  scanner-full.js        ← OWASP scanner
-  scanner-secrets.js     ← Fast secrets scanner (pre-commit)
-  store.js               ← Global store path management
-  store-verify.js        ← Store health checks and cleanup
-  scan-cache.js          ← Per-scan storage (scans/ directory)
-  rule-registry.js       ← Normalised catalogue of all rules
-  deep-analyzer.js       ← Claude API deep analysis
-  report-html.js         ← HTML report generator
-  report-index.js        ← HTTP server index page
-  report-markdown.js     ← Markdown report generator
-  report-json.js         ← JSON report generator
-  export-findings.js     ← Export findings to JSON for external review
-  rules/                 ← Rule definitions per language
+  scanner-full.js      ← OWASP scanner
+  scanner-secrets.js   ← Fast secrets scanner (pre-commit)
+  store.js             ← Global store path management
+  store-verify.js      ← Store health checks and cleanup
+  scan-cache.js        ← Per-scan storage (scans/ directory)
+  rule-registry.js     ← Normalised catalogue of all rules
+  deep-analyzer.js     ← Claude API deep analysis
+  report-html.js       ← HTML report generator
+  report-index.js      ← HTTP server index page
+  report-markdown.js   ← Markdown report generator
+  report-json.js       ← JSON report generator
+  export-findings.js   ← Export findings to JSON for external review
+  rules/               ← Rule definitions per language
 docs/
-  ARCHITECTURE.md        ← Product vision and technical architecture
-  CODEBASE.md            ← File-by-file reference
-  PROGRESS.md            ← Roadmap and current status
+  ARCHITECTURE.md      ← Product vision and technical architecture
+  CODEBASE.md          ← File-by-file reference
+  PROGRESS.md          ← Roadmap and current status
 ```
 
 ---
 
 ## Roadmap
 
-- `sc deps` – Dependency scanning with CVE lookup via OSV API
+- `scd deps` – Dependency scanning with CVE lookup via OSV API
 - Multi-user portal (Team and Professional tiers)
 - VS Code extension
-- `sc uninstall` – clean removal with store data options
+- `scd uninstall` – clean removal with store data options
 
 ---
 
@@ -281,4 +281,4 @@ docs/
 
 Built by [Activemind Solutions AB](https://activemind.se) — security consulting and penetration testing.
 
-> Security Co-Pilot is a commercial product. See LICENSE for terms.
+> Secure Code by Design is a commercial product. See LICENSE for terms.

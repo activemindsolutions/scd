@@ -1,8 +1,8 @@
-# Security Co-Pilot – Architecture
+# Secure Code by Design – Architecture
 
 ## Product vision
 
-Security Co-Pilot is a hybrid product: an automated security scanning CLI that runs locally
+Secure Code by Design is a hybrid product: an automated security scanning CLI that runs locally
 in the developer's workflow, combined with optional AI-powered deep analysis via Claude API.
 
 Target market: SMB companies using AI coding tools (Claude Code, GitHub Copilot, Cursor)
@@ -31,7 +31,7 @@ Controlled by `trust_level` in `securityagent.yml` (placed in customer's repo ro
 ## Global store architecture
 
 ```
-~/.security-copilot/
+~/.scd/
 ├── config                          ← API key (sc configure --api-key)
 └── repos/
     └── {repoId}/                   ← SHA-256(git remote URL) or SHA-256(abs path)
@@ -39,7 +39,7 @@ Controlled by `trust_level` in `securityagent.yml` (placed in customer's repo ro
         ├── config.yml              ← exceptions, locked_rules, trust_level
         ├── audit.log               ← full findings history (JSONL)
         ├── audit-summary.log       ← anonymised statistics (JSONL)
-        ├── last-scan.json          ← cache for sc report
+        ├── last-scan.json          ← cache for scd report
         └── reports/                ← generated reports (html, md, json)
 ```
 
@@ -48,7 +48,7 @@ All data lives in the global store. `repoId` is stable across re-clones if a git
 
 ## Git hooks
 
-`sc init` installs hooks via `git config core.hooksPath ~/.security-copilot/hooks`:
+`sc init` installs hooks via `git config core.hooksPath ~/.scd/hooks`:
 - **pre-commit** – secrets scanning (fast, blocks on CRITICAL)
 - **pre-push** – full OWASP scan (comprehensive, blocks on CRITICAL + HIGH)
 

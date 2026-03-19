@@ -1,9 +1,9 @@
-# Security Co-Pilot – Codebase Reference
+# Secure Code by Design – Codebase Reference
 
 ## Entry point
 
 ```
-bin/security-copilot.js     ← CLI entry point. All sc commands defined here.
+bin/scd.js                  ← CLI entry point. All scd commands defined here.
                                Uses commander@11. Async actions where needed.
 ```
 
@@ -12,7 +12,7 @@ bin/security-copilot.js     ← CLI entry point. All sc commands defined here.
 ### Scanning
 | File | Responsibility |
 |---|---|
-| `scanner-full.js` | Full OWASP scan. Loads all rule modules, applies vendor/minified/build-tool filters, runs antipattern checks with lookbehind support. Used by pre-push hook and `sc scan`. |
+| `scanner-full.js` | Full OWASP scan. Loads all rule modules, applies vendor/minified/build-tool filters, runs antipattern checks with lookbehind support. Used by pre-push hook and `scd scan`. |
 | `scanner-secrets.js` | Fast secrets-only scan. Used by pre-commit hook. |
 | `scanner-manual.js` | Interactive manual scan mode. |
 | `deep-analyzer.js` | Sends findings to Claude API for deep analysis. Sends only: filename + rule ID + triggering line + 8 lines context. Respects `trust_level`. Includes exponential backoff retry (429) and configurable inter-file delay (`delayMs`). |
@@ -56,7 +56,7 @@ Rule structure:
 | `store-verify.js` | Verify repos in store against disk. Statuses: OK/MISSING/STALE/ORPHAN. path-based repos don't require `.git/`. Interactive cleanup (`--clean`). Archive to .tar.gz or delete with confirmation. |
 | `scan-cache.js` | Per-scan storage. `saveCache()` writes to `scans/{scanId}.json` (never overwritten) and updates `last-scan.json` as a copy. `loadCache()` reads latest. `loadScan(repoRoot, scanId)` reads a specific scan. Scan ID format: `2026-03-17T132421`. |
 | `config.js` | Reads `config.yml` from store. Handles `trust_level`, `deep_delay_ms`, rule overrides, exceptions. DEFAULTS includes `deep_delay_ms: 0`. |
-| `global-config.js` | Manages `~/.security-copilot/config` (API key). |
+| `global-config.js` | Manages `~/.scd/config` (API key). |
 
 ### Reports
 | File | Responsibility |
@@ -71,12 +71,12 @@ Rule structure:
 ### CLI support
 | File | Responsibility |
 |---|---|
-| `rule-registry.js` | Central catalogue of all 172 rules. Normalises, deduplicates, sorts. Exports `RULES_VERSION` (independent from CLI version). Used by `sc rules` and `sc version`. |
+| `rule-registry.js` | Central catalogue of all 172 rules. Normalises, deduplicates, sorts. Exports `RULES_VERSION` (independent from CLI version). Used by `scd rules` and `scd version`. |
 | `output-terminal.js` | Terminal output formatting for scan results. ANSI colors, severity icons. |
 | `init-repo.js` | `sc init` logic. Creates store entry, installs git hooks via `core.hooksPath`. |
 | `installer.js` | Hook installation/removal helpers. |
-| `doctor.js` | `sc doctor` – verifies setup, checks node version, git config, API key. |
-| `exception-manager.js` | Manages exceptions in `config.yml`. Created via `sc approve`. |
+| `doctor.js` | `scd doctor` – verifies setup, checks node version, git config, API key. |
+| `exception-manager.js` | Manages exceptions in `config.yml`. Created via `scd approve`. |
 | `resolve-manager.js` | Marks findings as resolved. |
 | `insights-analyzer.js` | Reads audit log, computes behavioral statistics. |
 | `insights-output.js` | Formats insights for terminal output. |
@@ -97,7 +97,7 @@ from the match position – necessary because env-var fallbacks like
 ## Scan storage layout
 
 ```
-~/.security-copilot/repos/{repoId}/
+~/.scd/repos/{repoId}/
   last-scan.json              ← copy of latest scan (backwards compat)
   scans/
     2026-03-17T132421.json    ← individual scan with findings + deepResults
@@ -121,20 +121,20 @@ Key settings:
 - `deep_delay_ms: 2000` – 2s pause between `--deep` API calls (prevents rate limiting)
 
 Exceptions are never added as source code comments (security anti-pattern) –
-always managed in this file via `sc approve`.
+always managed in this file via `scd approve`.
 
 ## Version system
 
 - CLI version: `package.json` → `pkg.version` → read at runtime
 - Rules version: `lib/rule-registry.js` → `RULES_VERSION` constant
-- Both shown in `sc --version` and `sc version`
+- Both shown in `sc --version` and `scd version`
 - Versions are independent – a CLI update doesn't require a rules version bump
 
-## knownOptionFlags in sc scan
+## knownOptionFlags in scd scan
 
-The `sc scan` command uses a manual `process.argv` parser (commander is unreliable
+The `scd scan` command uses a manual `process.argv` parser (commander is unreliable
 with variadic `[targets...]`). Any new option that takes a value must be added to
-`knownOptionFlags` in `bin/security-copilot.js` to prevent its value being
+`knownOptionFlags` in `bin/scd.js` to prevent its value being
 interpreted as a scan target:
 
 ```js

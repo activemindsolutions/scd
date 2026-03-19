@@ -1,17 +1,17 @@
 {
-  "name": "security-copilot",
+  "name": "@activemind/scd",
   "version": "0.1.0",
-  "description": "Security Co-Pilot \u2013 AI-assisted security scanning for development teams",
+  "description": "Secure Code by Design – automated security scanning for development teams",
   "author": "Activemind Solutions AB",
   "license": "SEE LICENSE IN LICENSE",
-  "homepage": "https://github.com/activemind/security-copilot",
+  "homepage": "https://scbydesign.com",
   "engines": {
     "node": ">=18.0.0"
   },
   "bin": {
-    "sc": "./bin/security-copilot.js"
+    "scd": "./bin/scd.js"
   },
-  "main": "./bin/security-copilot.js",
+  "main": "./bin/scd.js",
   "files": [
     "bin/",
     "lib/",
@@ -21,8 +21,8 @@
   "scripts": {
     "test": "node test/run-poc.js",
     "link": "npm link",
-    "unlink": "npm unlink -g security-copilot",
-    "prepare": "chmod +x bin/security-copilot.js"
+    "unlink": "npm unlink -g @activemind/scd",
+    "prepare": "chmod +x bin/scd.js"
   },
   "dependencies": {
     "commander": "^11.0.0",

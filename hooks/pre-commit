@@ -1,3 +1,5 @@
 #!/bin/sh
-node $(pwd)/../security-copilot-poc/bin/security-copilot.js scan --hook=pre-commit
+# Secure Code by Design – pre-commit hook
+# Scans for secrets BEFORE they enter git history
+scd scan --hook=pre-commit
 exit $?

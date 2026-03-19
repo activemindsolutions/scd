@@ -1,4 +1,4 @@
-# Security Co-Pilot – Installation Guide
+# Secure Code by Design – Installation Guide
 
 ## Requirements
 
@@ -14,16 +14,16 @@ Use this on your primary development machine where the source code lives.
 Changes to the source take effect immediately — no reinstall needed.
 
 ```bash
-cd ~/Projects/security-copilot
+cd ~/Projects/scd
 npm install          # install dependencies
-npm link             # register 'sc' globally via symlink
-sc --version         # verify
+npm link             # register 'scd' globally via symlink
+scd --version        # verify
 ```
 
 To remove the dev link without touching store data:
 
 ```bash
-npm unlink -g security-copilot
+npm unlink -g @activemind/scd
 ```
 
 ---
@@ -33,22 +33,22 @@ npm unlink -g security-copilot
 On the development machine, pack a tarball:
 
 ```bash
-cd ~/Projects/security-copilot
+cd ~/Projects/scd
 npm pack
-# → security-copilot-0.1.0.tgz
+# → activemind-scd-0.1.0.tgz
 ```
 
 Copy the `.tgz` to the target machine (AirDrop, scp, USB), then:
 
 ```bash
-npm install -g security-copilot-0.1.0.tgz
-sc --version
+npm install -g activemind-scd-0.1.0.tgz
+scd --version
 ```
 
-To uninstall the binary (store data in ~/.security-copilot is kept):
+To uninstall the binary (store data in ~/.scd is kept):
 
 ```bash
-npm uninstall -g security-copilot
+npm uninstall -g @activemind/scd
 ```
 
 ---
@@ -57,9 +57,9 @@ npm uninstall -g security-copilot
 
 ```bash
 cd /path/to/your/project
-sc init              # register repo + install git hooks
-sc doctor            # verify setup
-sc scan              # run first scan
+scd init             # register repo + install git hooks
+scd doctor           # verify setup
+scd scan             # run first scan
 ```
 
 ---
@@ -69,8 +69,8 @@ sc scan              # run first scan
 All scan history, configs and reports are stored in:
 
 ```
-~/.security-copilot/
-  config              ← API key (sc configure --api-key)
+~/.scd/
+  config              ← API key (scd configure --api-key)
   repos/
     {repoId}/
       meta.json
@@ -80,21 +80,21 @@ All scan history, configs and reports are stored in:
       reports/
 ```
 
-**Uninstalling the `sc` binary does not remove store data.**
+**Uninstalling the `scd` binary does not remove store data.**
 This is intentional — your scan history is preserved.
 
 To inspect or clean up store data:
 
 ```bash
-sc store --show              # info for current repo
-sc store --verify            # check all repos
-sc store --verify --clean    # interactive cleanup
+scd store --show              # info for current repo
+scd store --verify            # check all repos
+scd store --verify --clean    # interactive cleanup
 ```
 
 To completely remove all store data (irreversible):
 
 ```bash
-rm -rf ~/.security-copilot
+rm -rf ~/.scd
 ```
 
 ---
@@ -102,14 +102,15 @@ rm -rf ~/.security-copilot
 ## Zsh / shell aliases
 
 If you previously had aliases set up in `~/.zshrc.d/30-aliases.zsh`,
-remove them — the global `sc` binary replaces them.
+remove them — the global `scd` binary replaces them.
 
 Lines to remove:
 
 ```zsh
-# (any alias or path pointing to the old security-copilot-poc directory)
+# (any alias or path pointing to an old scd directory)
 alias sc=...
-export PATH=...security-copilot-poc...
+alias scd=...
+
 ```
 
 After editing, reload your shell:

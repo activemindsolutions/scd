@@ -1,3 +1,5 @@
 #!/bin/sh
-node /Users/mikael/Development/security-copilot-poc/bin/security-copilot.js scan --hook=pre-push
+# Secure Code by Design – pre-push hook  
+# Full security scan before code leaves this machine
+scd scan --hook=pre-push
 exit $?
