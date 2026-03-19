@@ -28,6 +28,10 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 - Git
 - npm
 
+**macOS / Linux:** No additional requirements.
+
+**Windows:** Windows 10 (build 1803) or later required. Git for Windows must be installed (not WSL). Windows Terminal or PowerShell recommended — `cmd.exe` has limited ANSI colour support.
+
 ---
 
 ## Installation

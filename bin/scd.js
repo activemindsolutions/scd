@@ -27,7 +27,7 @@ program
 program
   .command('scan [targets...]')
   .description('Run security scan – hook mode (automatic) or manual')
-  .option('--hook <type>', 'Hook-läge: pre-commit eller pre-push (körs av git hooks)')
+  .option('--hook <type>', 'Hook mode: pre-commit or pre-push (run by git hooks)')
   .option('--lang <lang>', 'Begränsa till språk: js, ts, py, php ...')
   .option('--severity <level>', 'Visa bara: CRITICAL, HIGH, EXPOSURE ...')
   .option('--rule <id>', 'Visa bara specifik regel: INJ-001, JWT-001 ...')
@@ -50,7 +50,10 @@ program
       }
 
       console.log(`\n\x1b[36m╔══════════════════════════════════════════╗\x1b[0m`);
-      console.log(`\x1b[36m║         Secure Code by Design v${pkg.version.padEnd(7)}      ║\x1b[0m`);
+      const _vt = 'Secure Code by Design v' + pkg.version;
+      const _pl = Math.floor((42 - _vt.length) / 2);
+      const _pr = 42 - _vt.length - _pl;
+      console.log(`\x1b[36m║${ ' '.repeat(_pl)}${_vt}${ ' '.repeat(_pr)}║\x1b[0m`);
       console.log(`\x1b[36m╚══════════════════════════════════════════╝\x1b[0m`);
       console.log(`\x1b[90m Scanning ${files.length} file(s) – hook: ${opts.hook}\x1b[0m\n`);
 
@@ -129,13 +132,16 @@ program
     }
     const langLabel = opts.lang ? ` [${opts.lang}]` : '';
     console.log(`\n\x1b[36m╔══════════════════════════════════════════╗\x1b[0m`);
-    console.log(`\x1b[36m║         Secure Code by Design v${pkg.version.padEnd(7)}      ║\x1b[0m`);
+    const _vt2 = 'Secure Code by Design v' + pkg.version;
+    const _pl2 = Math.floor((42 - _vt2.length) / 2);
+    const _pr2 = 42 - _vt2.length - _pl2;
+    console.log(`\x1b[36m║${ ' '.repeat(_pl2)}${_vt2}${ ' '.repeat(_pr2)}║\x1b[0m`);
     console.log(`\x1b[36m╚══════════════════════════════════════════╝\x1b[0m`);
-    console.log(`\x1b[90m Manuell scanning${langLabel}: ${scanTarget}\x1b[0m`);
-    console.log(`\x1b[90m ${files.length} fil(er) hittade${skipped.length > 0 ? ` · ${skipped.length} hoppades över` : ''}\x1b[0m\n`);
+    console.log(`\x1b[90m Manual scan${langLabel}: ${scanTarget}\x1b[0m`);
+    console.log(`\x1b[90m ${files.length} file(s) found${skipped.length > 0 ? ` · ${skipped.length} skipped` : ''}\x1b[0m\n`);
 
     if (files.length === 0) {
-      console.log('\x1b[33m Inga stödda filer hittades.\x1b[0m');
+      console.log('\x1b[33m No supported files found.\x1b[0m');
       console.log(`\x1b[90m Stödda filändelser: .js .ts .jsx .tsx .mjs .py .php\x1b[0m\n`);
       process.exit(0);
     }
@@ -531,11 +537,24 @@ program
           console.log('\x1b[90m   Server stopped.\x1b[0m\n');
           resolve();
         };
-        try {
-          if (process.stdin.setRawMode) process.stdin.setRawMode(true);
+        // setRawMode is not available in cmd.exe / non-TTY environments (e.g. Windows)
+        // Fall back to line-based input (press Enter) or Ctrl-C
+        const hasRawMode = process.stdin.isTTY && typeof process.stdin.setRawMode === 'function';
+        if (hasRawMode) {
+          try {
+            process.stdin.setRawMode(true);
+            process.stdin.resume();
+            process.stdin.once('data', cleanup);
+          } catch {
+            // If raw mode fails despite isTTY, fall through to SIGINT only
+            console.log('\x1b[90m   Press Ctrl-C to stop the server.\x1b[0m');
+          }
+        } else {
+          // Windows cmd.exe or non-TTY: wait for Enter or Ctrl-C
+          console.log('\x1b[90m   Press Enter or Ctrl-C to stop the server.\x1b[0m');
           process.stdin.resume();
           process.stdin.once('data', cleanup);
-        } catch {}
+        }
         process.once('SIGINT', cleanup);
       });
       return;
