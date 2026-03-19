@@ -608,11 +608,13 @@ program
 program
   .command('configure')
   .description('Manage global configuration (API key etc.)')
-  .option('--api-key <key>',    'Spara Anthropic API-nyckel för --deep analys')
-  .option('--clear-api-key',    'Ta bort sparad API-nyckel')
-  .option('--show',             'Visa aktuell global konfiguration')
+  .option('--api-key <key>',    'Save Anthropic API key for --deep analysis')
+  .option('--clear-api-key',    'Remove saved API key')
+  .option('--show',             'Show current global configuration')
+  .option('--central-url <url>',  'Set scd-server URL (enables push queue)')
+  .option('--clear-central-url',  'Remove scd-server URL (disables push queue)')
   .action((opts) => {
-    const { get, set, remove, maskApiKey, showConfig, GLOBAL_CONFIG } =
+    const { get, set, remove, maskApiKey, showConfig, getCentralUrl, setCentralUrl, removeCentralUrl, GLOBAL_CONFIG } =
       require('../lib/global-config');
 
     const CYAN  = '\x1b[36m';
@@ -628,14 +630,14 @@ program
 
       // Basic format validation – Anthropic keys start with sk-ant-
       if (!key.startsWith('sk-ant-')) {
-        console.error(`\n${RED}✗ Ogiltig API-nyckel.${RESET}`);
-        console.error(`  Anthropic API-nycklar börjar med ${DIM}sk-ant-${RESET}`);
-        console.error(`  Hämta din nyckel på: ${CYAN}https://console.anthropic.com/settings/keys${RESET}\n`);
+        console.error(`\n${RED}✗ Invalid API key.${RESET}`);
+        console.error(`  Anthropic API keys start with ${DIM}sk-ant-${RESET}`);
+        console.error(`  Get your key at: ${CYAN}https://console.anthropic.com/settings/keys${RESET}\n`);
         process.exit(1);
       }
 
       set('ANTHROPIC_API_KEY', key);
-      console.log(`\n${GREEN}✓ API-nyckel sparad${RESET} → ${DIM}${GLOBAL_CONFIG}${RESET}`);
+      console.log(`\n${GREEN}✓ API key saved${RESET} → ${DIM}${GLOBAL_CONFIG}${RESET}`);
       console.log(`  ${DIM}${maskApiKey(key)}${RESET}`);
       console.log(`\n  ${DIM}Use 'scd scan --deep' to enable Claude analysis.${RESET}\n`);
       process.exit(0);
@@ -645,30 +647,67 @@ program
     if (opts.clearApiKey) {
       const removed = remove('ANTHROPIC_API_KEY');
       if (removed) {
-        console.log(`\n${GREEN}✓ API-nyckel borttagen${RESET} från ${DIM}${GLOBAL_CONFIG}${RESET}\n`);
+        console.log(`\n${GREEN}✓ API key removed${RESET} from ${DIM}${GLOBAL_CONFIG}${RESET}\n`);
       } else {
-        console.log(`\n${DIM}Ingen API-nyckel att ta bort.${RESET}\n`);
+        console.log(`\n${DIM}No API key to remove.${RESET}\n`);
       }
       process.exit(0);
     }
 
-    // ── --show (default om inga flaggor) ──────────────────────────────────
+    // ── --central-url <url> ───────────────────────────────────────────────
+    if (opts.centralUrl) {
+      const url = opts.centralUrl.trim();
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        console.error(`\n${RED}✗ Invalid URL – must start with http:// or https://${RESET}\n`);
+        process.exit(1);
+      }
+      setCentralUrl(url);
+      console.log(`\n${GREEN}✓ Central URL saved${RESET} → ${DIM}${url}${RESET}`);
+      console.log(`  ${DIM}Push queue enabled – events will sync on each scd command.${RESET}\n`);
+      process.exit(0);
+    }
+
+    // ── --clear-central-url ───────────────────────────────────────────────
+    if (opts.clearCentralUrl) {
+      const removed = removeCentralUrl();
+      if (removed) {
+        console.log(`\n${GREEN}✓ Central URL removed${RESET} – push queue disabled.\n`);
+      } else {
+        console.log(`\n${DIM}No central URL configured.${RESET}\n`);
+      }
+      process.exit(0);
+    }
+
+    // ── --show (default if no flags) ──────────────────────────────────────
     const info = showConfig();
+    const centralUrl = getCentralUrl();
 
     console.log(`\n${CYAN}${BOLD}Secure Code by Design – Global configuration${RESET}\n`);
-    console.log(`  Konfigfil:    ${DIM}${info.configPath}${RESET}`);
-    console.log(`  Filen finns:  ${info.exists ? GREEN + 'ja' : DIM + 'nej (inga inställningar sparade)'}${RESET}`);
+    console.log(`  Config file:  ${DIM}${info.configPath}${RESET}`);
+    console.log(`  File exists:  ${info.exists ? GREEN + 'yes' : DIM + 'no (no settings saved yet)'}${RESET}`);
     console.log('');
-    console.log(`  API-nyckel:   ${info.apiKey}`);
-    console.log(`  Källa:        ${DIM}${info.apiKeySource}${RESET}`);
+    console.log(`  API key:      ${info.apiKey}`);
+    console.log(`  Source:       ${DIM}${info.apiKeySource}${RESET}`);
     console.log('');
 
-    if (!info.apiKeySource || info.apiKeySource === '(inte satt)') {
+    if (!info.apiKeySource || info.apiKeySource === '(not set)') {
       console.log(`  ${DIM}Set API key:     scd configure --api-key sk-ant-...${RESET}`);
-      console.log(`  ${DIM}Alternativt:     export ANTHROPIC_API_KEY="sk-ant-..."${RESET}`);
+      console.log(`  ${DIM}Alternative:     export ANTHROPIC_API_KEY="sk-ant-..."${RESET}`);
     } else {
       console.log(`  ${DIM}Clear key:       scd configure --clear-api-key${RESET}`);
       console.log(`  ${DIM}Deep analysis:   scd scan --deep${RESET}`);
+    }
+    console.log('');
+    console.log(`  Central URL:  ${centralUrl ? GREEN + centralUrl : DIM + '(not set – push queue disabled)'}${RESET}`);
+    console.log('');
+    if (centralUrl) {
+      const { queueSize, staleCount } = require('../lib/push-queue');
+      const pending = queueSize();
+      const stale   = staleCount();
+      console.log(`  Queue:        ${DIM}${pending} pending event(s)${stale > 0 ? '  ' + RED + stale + ' stale' + RESET : ''}${RESET}`);
+      console.log(`  ${DIM}Clear URL:       scd configure --clear-central-url${RESET}`);
+    } else {
+      console.log(`  ${DIM}Set server URL:  scd configure --central-url https://your-server:3000${RESET}`);
     }
     console.log('');
   });
@@ -1284,5 +1323,21 @@ program
 
 program.parse(process.argv);
 
+// ── Push worker – trigger after every command ─────────────────────────────
+// Non-blocking: runs after the CLI command completes.
+// Only active when a central URL is configured.
+// Failures are silent – never affect CLI output or exit code.
+setImmediate(() => {
+  try {
+    const { getCentralUrl } = require('../lib/global-config');
+    const centralUrl = getCentralUrl();
+    if (!centralUrl) return;
 
+    const { flush, queueSize } = require('../lib/push-queue');
+    if (queueSize() === 0) return;
 
+    flush(centralUrl).catch(() => {});
+  } catch {
+    // Non-fatal
+  }
+});
