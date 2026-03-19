@@ -1,8 +1,8 @@
 # Secure Code by Design – Progress & Roadmap
 
-_Last updated: 2026-03-19 (rename: Security Co-Pilot → Secure Code by Design)_
+_Last updated: 2026-03-19_
 
-## Status: v0.5.0 – Production-ready CLI
+## Status: v0.5.0 – Production-ready CLI + scd-server MVP
 
 The tool lives at `~/Projects/scd` with GitHub at
 `git@github.com:activemindsolutions/scd.git` (main branch).
@@ -10,6 +10,9 @@ The tool lives at `~/Projects/scd` with GitHub at
 Installed and verified working on:
 - macOS (primary dev machine, `npm link`)
 - Ubuntu (secondary machine, `git clone` + `npm link`)
+
+scd-server lives at `~/Projects/scd-server` with GitHub at
+`git@github.com:activemindsolutions/scd-server.git` (main branch, private repo).
 
 ---
 
@@ -133,11 +136,33 @@ Deliberately parked – needs careful design.
 - Separate `scd deps` command (not mixed into `scd scan`)
 - CRA documentation angle: evidence of active vulnerability monitoring
 
-### Multi-user & portal (Fas 1–2)
-- Push queue architecture (events → `push-queue.jsonl` → sc-server)
-- License validation (Ed25519 offline + 24h heartbeat)
-- sc-server MVP (Node.js binary via `pkg`)
-- Team dashboard, knowledge gap analysis, trend view
+### Fas 1 – Foundation (pågående)
+
+**Klart:**
+- ✅ Push queue i CLI (`push-queue.js`) — offline-first, Bearer token auth
+- ✅ `scd configure --central-url / --token / --clear-*`
+- ✅ `scd doctor` visar push queue-status, stale events, grace period
+- ✅ scd-server MVP — Express + SQLite, `/api/v1/health` + `/api/v1/events/batch`
+- ✅ End-to-end verifierat: scd scan → push queue → scd-server → SQLite
+
+**Återstår i Fas 1:**
+- 🔲 `pkg`-kompilering av scd CLI (prioriterat – löser Node-version-konflikter permanent)
+- 🔲 `pkg`-kompilering av scd-server till plattformsbinär (macOS arm64/x64, Linux x64)
+- 🔲 Licensvalidering (Ed25519 offline + 24h heartbeat mot api.activemind.se)
+- 🔲 Admin UI (minimal webbgränssnitt för scd-server)
+
+### Fas 2 – Team value (planerad)
+- Team dashboard (aggregerad teamöversikt, aktiva repos, findings trend)
+- Knowledge gap-analys på teamnivå (OWASP-kategorier)
+- Trendvy 12 veckor
+- Exception approval-flöde för team leads
+
+### `pkg` – Binary distribution (nästa prioritet)
+Kompilera scd CLI och scd-server till fristående binärer via `pkg`.
+Eliminerar Node-version-konflikter för kunder och dev-miljö.
+- scd CLI: `node18-macos-arm64`, `node18-macos-x64`, `node18-linux-x64`, `node18-win-x64`
+- scd-server: samma plattformar
+- Kunder installerar en binary — inget Node, ingen npm, ingen nvm
 
 ### Install/uninstall flow
 - `scd uninstall` – removes hooks, optionally cleans store
