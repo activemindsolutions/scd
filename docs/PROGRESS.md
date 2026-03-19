@@ -1,8 +1,8 @@
 # Secure Code by Design – Progress & Roadmap
 
-_Last updated: 2026-03-17 (session 2)_
+_Last updated: 2026-03-19 (rename: Security Co-Pilot → Secure Code by Design)_
 
-## Status: v0.1.0 – Production-ready CLI
+## Status: v0.5.0 – Production-ready CLI
 
 The tool lives at `~/Projects/scd` with GitHub at
 `git@github.com:activemindsolutions/scd.git` (main branch).
@@ -43,7 +43,7 @@ Installed and verified working on:
 - ✅ `scd rules` – list all 172 rules
 - ✅ `scd rules --lang / --severity / --id / --search / --stats / --format json`
 - ✅ `scd version` – detailed version info (CLI + rules + Node + OS)
-- ✅ `scd --version` – short version string (e.g. `0.1.0  (rules 1.0.0)`)
+- ✅ `scd --version` – short version string (e.g. `0.5.0  (rules 1.0.0)`)
 
 ### Rule coverage (172 rules total)
 - ✅ JavaScript/TypeScript – 29 rules
@@ -114,10 +114,10 @@ Installed and verified working on:
 ### Versioning convention
 | What changes | CLI (`package.json`) | Rules (`rule-registry.js`) |
 |---|---|---|
-| New CLI feature | bump minor: `0.2.0` | unchanged |
-| New rule or rule fix | bump minor: `0.2.0` | bump minor: `1.1.0` |
+| New CLI feature | bump minor: `0.6.0` | unchanged |
+| New rule or rule fix | bump minor: `0.6.0` | bump minor: `1.1.0` |
 | Rule engine separation | bump major: `1.0.0` | bump major: `2.0.0` |
-| Critical bugfix | bump patch: `0.1.1` | bump patch: `1.0.1` |
+| Critical bugfix | bump patch: `0.5.1` | bump patch: `1.0.1` |
 
 ---
 

@@ -50,7 +50,7 @@ program
       }
 
       console.log(`\n\x1b[36m╔══════════════════════════════════════════╗\x1b[0m`);
-      console.log(`\x1b[36m║         Secure Code by Design v0.1.0       ║\x1b[0m`);
+      console.log(`\x1b[36m║         Secure Code by Design v${pkg.version.padEnd(7)}      ║\x1b[0m`);
       console.log(`\x1b[36m╚══════════════════════════════════════════╝\x1b[0m`);
       console.log(`\x1b[90m Scanning ${files.length} file(s) – hook: ${opts.hook}\x1b[0m\n`);
 
@@ -129,7 +129,7 @@ program
     }
     const langLabel = opts.lang ? ` [${opts.lang}]` : '';
     console.log(`\n\x1b[36m╔══════════════════════════════════════════╗\x1b[0m`);
-    console.log(`\x1b[36m║         Secure Code by Design v0.1.0       ║\x1b[0m`);
+    console.log(`\x1b[36m║         Secure Code by Design v${pkg.version.padEnd(7)}      ║\x1b[0m`);
     console.log(`\x1b[36m╚══════════════════════════════════════════╝\x1b[0m`);
     console.log(`\x1b[90m Manuell scanning${langLabel}: ${scanTarget}\x1b[0m`);
     console.log(`\x1b[90m ${files.length} fil(er) hittade${skipped.length > 0 ? ` · ${skipped.length} hoppades över` : ''}\x1b[0m\n`);

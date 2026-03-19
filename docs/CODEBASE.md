@@ -127,7 +127,7 @@ always managed in this file via `scd approve`.
 
 - CLI version: `package.json` → `pkg.version` → read at runtime
 - Rules version: `lib/rule-registry.js` → `RULES_VERSION` constant
-- Both shown in `sc --version` and `scd version`
+- Both shown in `scd --version` and `scd version`
 - Versions are independent – a CLI update doesn't require a rules version bump
 
 ## knownOptionFlags in scd scan
