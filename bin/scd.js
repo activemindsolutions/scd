@@ -15,6 +15,23 @@ const { saveCache, loadCache, cacheAge } = require('../lib/scan-cache');
 
 const program = new Command();
 
+// ── Push queue flush helper ───────────────────────────────────────────────
+// Awaitable flush — called before process.exit() in scan commands.
+// Non-blocking: resolves immediately if no central URL or empty queue.
+async function tryFlush() {
+  try {
+    const { getCentralUrl } = require('../lib/global-config');
+    const centralUrl = getCentralUrl();
+    if (!centralUrl) return;
+    const { flush, queueSize } = require('../lib/push-queue');
+    if (queueSize() === 0) return;
+    const repoRoot = (() => {
+      try { return require('../lib/config').getRepoRoot(); } catch { return null; }
+    })();
+    await flush(centralUrl, { repoRoot });
+  } catch { /* non-fatal */ }
+}
+
 const pkg = require('../package.json');
 
 const { RULES_VERSION } = require('../lib/rule-registry');
@@ -70,6 +87,7 @@ program
 
       const { output, exitCode } = formatTerminal(findings, opts.hook, config);
       console.log(output);
+      await tryFlush();
       process.exit(exitCode);
     }
 
@@ -173,6 +191,7 @@ program
       } else {
         console.log(jsonOut);
       }
+      await tryFlush();
       process.exit(0);
     }
 
@@ -211,6 +230,7 @@ program
         console.log(`\n\x1b[32m✓ HTML report:\x1b[0m \x1b[36m${linkText}\x1b[0m`);
       }
       console.log(`\x1b[90m  open ${outPath}\x1b[0m\n`);
+      await tryFlush();
       process.exit(0);
     }
 
@@ -225,6 +245,7 @@ program
       if (config.trust_level === 'maximum_privacy') {
         console.log('\n\x1b[33m⚠️  --deep is disabled when trust_level is maximum_privacy.\x1b[0m');
         console.log('\x1b[90m   No code is sent externally. Set trust_level: balanced in securityagent.yml to enable.\x1b[0m\n');
+        await tryFlush();
         process.exit(0);
       }
 
@@ -235,6 +256,7 @@ program
       if (!apiKey) {
         console.log('\n\x1b[31m❌ --deep requires an Anthropic API key.\x1b[0m');
         console.log('\x1b[90m   Run: scd configure --api-key sk-ant-...\x1b[0m\n');
+        await tryFlush();
         process.exit(0);
       }
 
@@ -274,6 +296,7 @@ program
     });
 
     // Manual scan: always exit 0 (informational, never blocks workflow)
+    await tryFlush();
     process.exit(0);
   });
 
@@ -1371,7 +1394,12 @@ setImmediate(() => {
     const { flush, queueSize } = require('../lib/push-queue');
     if (queueSize() === 0) return;
 
-    flush(centralUrl).catch(() => {});
+    // Pass repoRoot so meta includes repo and installation identity
+    const repoRoot = (() => {
+      try { return require('../lib/config').getRepoRoot(); } catch { return null; }
+    })();
+
+    flush(centralUrl, { repoRoot }).catch(() => {});
   } catch {
     // Non-fatal
   }
