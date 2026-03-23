@@ -23,7 +23,7 @@ The product findings create a natural upsell funnel to Activemind's consulting e
 
 ```
 Maximum Privacy    – Everything local, zero external calls
-Balanced           – Default. Deep analysis via Claude API (anonymised code fragments only)
+Balanced           – Default. Deep analysis via Claude API (code fragments only)
 Maximum Analysis   – Full Claude API integration, maximum findings
 ```
 
@@ -43,6 +43,9 @@ Developer machine
                                             /api/v1/events/batch
                                             /admin
                                             /dashboard
+                                            /dashboard/rule/:id
+                                            /dashboard/repo/:id
+                                            /dashboard/installation/:id
 ```
 
 ## Global store architecture (scd CLI)
@@ -56,18 +59,15 @@ Developer machine
         ├── meta.json               ← name, remote, localPath, type, lastSeen, lastScan
         ├── config.yml              ← exceptions, locked_rules, trust_level
         ├── audit.log               ← full findings history (JSONL)
-        ├── audit-summary.log       ← anonymised statistics (JSONL)
         ├── last-scan.json          ← cache for scd report
         ├── scans/                  ← individual scan files (never overwritten)
         └── reports/                ← generated reports (html, md, json)
 ```
 
-**Key principle:** The customer's repository is never touched after `scd init` installs git hooks.
+**Key principle:** The customer's repository is never touched after `scd init`.
 All data lives in the global store.
 
 ## Push queue architecture
-
-Events flow from CLI → scd-server via an offline-first queue:
 
 ```
 scd scan completes
@@ -82,31 +82,76 @@ Each event includes:
 - Scan summary (files, findings by severity, blocked, exceptions)
 - OWASP category breakdown (`categories` object)
 - Top 20 rules by count (`top_rules` array)
-- Meta: installationId (machine fingerprint), repoId, hostname, platform, scdVersion
+- Meta: installationId, repoId, hostname, platform, scdVersion
 
-**Offline behaviour:** Queue entries accumulate with `attempts` counter. After 10 failed
-attempts entries are considered stale. Grace period: 7 days before `scd doctor` warns.
+**Offline behaviour:** Queue entries accumulate with `attempts` counter.
+After 10 failed attempts entries are stale. Grace period: 7 days before `scd doctor` warns.
 
 ## scd-server architecture
 
 ```
-server.js                     ← Entry point, startup, graceful shutdown
+server.js                     ← Entry point. --host/--port/--help flags.
 lib/
   server-config.js            ← Config hierarchy: ENV → config.yml → defaults
-  db.js                       ← SQLite abstraction (Postgres-ready interface)
+  db.js                       ← SQLite abstraction (Postgres-ready)
   auth.js                     ← License validation + Bearer token auth
-  admin-auth.js               ← User accounts, scrypt hashing, role middleware
+  session-auth.js             ← JWT sessions, httpOnly cookie, rate limiter
+  admin-auth.js               ← Password hashing, first-run setup, error pages
   ui-helpers.js               ← Shared navbar, logout script
+  routes-auth.js              ← POST /auth/login, POST /auth/logout, GET /login
   routes-health.js            ← GET /api/v1/health, GET /api/v1/entitlements
   routes-events.js            ← POST /api/v1/events/batch
   routes-admin.js             ← /admin UI + API (admin role only)
   routes-dashboard.js         ← /dashboard UI + API (admin + viewer)
+  routes-detail.js            ← /dashboard/rule|repo|installation/:id
 data/
   scd.db                      ← SQLite database (gitignored)
-  scd-public.pem              ← Ed25519 public key for license verification (gitignored)
+  scd-public.pem              ← Ed25519 public key (gitignored)
   license.key                 ← Signed license file (gitignored)
 config.yml                    ← Server configuration (gitignored)
 config.example.yml            ← Configuration template (committed)
+```
+
+## Auth architecture (JWT)
+
+```
+POST /auth/login
+  → validate credentials against users table (scrypt)
+  → rate limit check (in-memory per IP)
+  → sign JWT (HS256, jti claim)
+  → create session record in sessions table
+  → set httpOnly SameSite=Strict cookie
+  → redirect to /dashboard
+
+Every protected request
+  → extract JWT from cookie (or Authorization: Bearer)
+  → jwt.verify() — throws on invalid signature, expired, alg:none
+  → db.getSession(jti) — checks not invalidated, not expired
+  → attach user to req.user
+
+POST /auth/logout
+  → db.invalidateSession(jti)
+  → clearCookie()
+
+Roles:
+  admin  → /admin/* + /dashboard/*
+  viewer → /dashboard/* only
+```
+
+## Dashboard drill-down navigation (Nivå 1)
+
+```
+/dashboard
+  ├── Top Rules → /dashboard/rule/:ruleId
+  │     ├── Repos     → /dashboard/repo/:repoId
+  │     └── Installs  → /dashboard/installation/:id
+  ├── Recent Scans (repo link) → /dashboard/repo/:repoId
+  │     ├── Top rules → /dashboard/rule/:ruleId
+  │     └── Installs  → /dashboard/installation/:id
+  ├── Recent Scans (host link) → /dashboard/installation/:id
+  │     ├── Repos     → /dashboard/repo/:repoId
+  │     └── Top rules → /dashboard/rule/:ruleId
+  └── Repositories → /dashboard/repo/:repoId
 ```
 
 ## License validation
@@ -118,16 +163,8 @@ scd-server startup
   → Verify Ed25519 signature against data/scd-public.pem
   → Check expiry date
   → Check machine fingerprint (bind on first activation)
-  → Return: { valid, tier, seats, expiry, features[], rulePacks[] }
   → No license file → development mode (full access)
   → Invalid → degrade to Starter tier
-```
-
-Keypair management (Activemind-internal, `~/Projects/scd-admin`):
-```
-node generate-license.js --generate-keys        → creates scd-license-private.pem + scd-license-public.pem
-node generate-license.js --customer "Acme AB" … → creates signed license file
-cp scd-license-public.pem ~/Projects/scd-server/data/scd-public.pem
 ```
 
 ## Git hooks
@@ -136,32 +173,14 @@ cp scd-license-public.pem ~/Projects/scd-server/data/scd-public.pem
 - **pre-commit** – secrets scanning (fast, blocks on CRITICAL)
 - **pre-push** – full OWASP scan (comprehensive, blocks on CRITICAL + HIGH)
 
-## Auth architecture (current)
-
-```
-/api/v1/*     → Bearer token (scd CLI ↔ scd-server)
-/admin/*      → HTTP Basic Auth, admin role only
-/dashboard/*  → HTTP Basic Auth, admin or viewer role
-/             → redirect to /dashboard
-/login        → logout landing page
-```
-
-Users stored in `users` table with scrypt-hashed passwords.
-Two accounts created on first startup: `admin` and `viewer`.
-
-**Planned:** Replace Basic Auth with JWT + httpOnly cookie sessions.
-
 ## CRA (EU Cyber Resilience Act) alignment
 
-- Audit trail (`audit.log`) supports manufacturer accountability requirements
+- Audit trail (`audit.log`) supports manufacturer accountability
 - Exception management with approval workflow supports documented risk decisions
 - Reports support evidence collection for conformity assessments
 - `scd deps` (planned) supports vulnerability disclosure requirements
 
-## Supply chain security consideration
+## Supply chain security
 
-The global hooks architecture means scd itself is a potential supply chain attack vector.
-Future considerations:
-- Rule signing (Activemind-signed vs community rules)
-- Binary distribution with checksums (Alt 2 + Alt 3 decision)
-- Config signing
+- Rule signing planned for Fas 3 (Activemind-signed vs community)
+- Binary distribution with checksums planned before first customer

@@ -3,7 +3,6 @@
 ## scd CLI
 
 ### Entry point
-
 ```
 bin/scd.js                  ← CLI entry point. All scd commands defined here.
                                Uses commander@11. tryFlush() before process.exit() in scan.
@@ -37,30 +36,30 @@ bin/scd.js                  ← CLI entry point. All scd commands defined here.
 | File | Responsibility |
 |---|---|
 | `store.js` | Central path management. `getRepoId()`, `getRepoIdentity()`, `updateMeta()`, `listRepos()`, all store paths. |
-| `store-verify.js` | Verify repos against disk. Statuses: OK/MISSING/STALE/ORPHAN. Windows-compatible archive (Node.js copy, no tar). |
+| `store-verify.js` | Verify repos against disk. Statuses: OK/MISSING/STALE/ORPHAN. Windows-compatible archive. |
 | `scan-cache.js` | Per-scan storage. `saveCache()`, `loadCache()`, `loadScan()`. |
 | `config.js` | Reads `config.yml` from store. Handles `trust_level`, `deep_delay_ms`, rule overrides, exceptions. |
-| `global-config.js` | Manages `~/.scd/config`. API key, central URL, central token. Functions: `getApiKey`, `getCentralUrl`, `setCentralUrl`, `getCentralToken`, `setCentralToken`. |
+| `global-config.js` | Manages `~/.scd/config`. API key, central URL, token. |
 
 #### Push queue
 | File | Responsibility |
 |---|---|
-| `push-queue.js` | Offline-first event queue. `enqueue()`, `flush()`, `queueSize()`, `staleCount()`, `isPastGrace()`, `purgeStale()`. Sends `meta` (installationId, repoId, hostname, platform, scdVersion) with each flush. |
+| `push-queue.js` | Offline-first event queue. `enqueue()`, `flush()`, `queueSize()`, `staleCount()`, `isPastGrace()`. Sends meta (installationId, repoId, hostname, platform, scdVersion) with each flush. |
 
 #### Reports
 | File | Responsibility |
 |---|---|
-| `report-html.js` | Full HTML report. Tabs: Executive Summary, Remediation Plan, All Findings, Deep Analysis. |
+| `report-html.js` | Full HTML report with Executive Summary, Remediation Plan, All Findings, Deep Analysis tabs. |
 | `report-index.js` | HTTP server index page. |
 | `report-markdown.js` | Markdown report. |
-| `report-json.js` | JSON report. Version read dynamically from `package.json`. |
-| `audit.js` | Writes to `audit.log` (JSONL). Also calls `enqueue()` with category breakdown and top rules if central URL configured. |
+| `report-json.js` | JSON report. |
+| `audit.js` | Writes to `audit.log` (JSONL). Calls `enqueue()` with full category + top_rules breakdown. |
 | `audit-report.js` | Reads and formats audit log. |
 
 #### CLI support
 | File | Responsibility |
 |---|---|
-| `rule-registry.js` | Central catalogue of all 172 rules. Exports `RULES_VERSION` (independent from CLI version). |
+| `rule-registry.js` | Central catalogue of all 172 rules. Exports `RULES_VERSION`. |
 | `output-terminal.js` | Terminal output formatting for scan results. |
 | `init-repo.js` | `scd init` logic. |
 | `installer.js` | Hook installation/removal. `HOOKS_DIR = ~/.scd/hooks`. |
@@ -71,39 +70,33 @@ bin/scd.js                  ← CLI entry point. All scd commands defined here.
 | `insights-output.js` | Formats insights for terminal. |
 | `git-utils.js` | Git helpers: remote URL, repo root, branch, changed files. |
 
-### Version system
-
-- CLI version: `package.json` → `pkg.version` → read at runtime
-- Rules version: `lib/rule-registry.js` → `RULES_VERSION` constant
-- Both shown in `scd --version` and `scd version`
-- Versions are independent
-
 ---
 
 ## scd-server
 
 ### Entry point
-
 ```
-server.js                   ← Express app, startup, graceful shutdown, route registration
-                               Registers: routes-health, routes-events, routes-admin, routes-dashboard
-                               Root / → redirect to /dashboard
-                               /login → logout landing page
+server.js                   ← Express app, startup, graceful shutdown, route registration.
+                               Supports --host, --port, --help CLI flags.
+                               Root / → redirect to /dashboard.
 ```
 
 ### lib/
 
 | File | Responsibility |
 |---|---|
-| `server-config.js` | Config hierarchy: ENV → `config.yml` → defaults. Fields: host, port, log_level, public_key_path, license_path, db_path. |
-| `db.js` | SQLite abstraction layer via `better-sqlite3`. Postgres-ready interface. Tables: installations, repos, scans, scan_categories, scan_top_rules, raw_events, server_config, users. Functions: insertEvents, getRecentScans (with repo JOIN), getCategoryBreakdown, getTopRules, getUserByUsername, createUser, updatePassword. |
-| `auth.js` | License validation (Ed25519 + machine fingerprint), Bearer token auth, `requireFeature()` middleware. `validateLicense()` cached in memory per startup. |
-| `admin-auth.js` | User account management, scrypt password hashing, `requireAdminAuth` (admin only), `requireDashboardAuth` (admin + viewer), HTML 403 error page, `ensureAdminExists()`. |
-| `ui-helpers.js` | `renderNavbar(user, activePage)` — shared nav with Dashboard/Admin links and Sign out. `renderLogoutScript()` — redirects to /login. |
-| `routes-health.js` | `GET /api/v1/health` (public), `GET /api/v1/entitlements` (Bearer token). |
-| `routes-events.js` | `POST /api/v1/events/batch` (Bearer token). Validates input, calls `db.insertEvents()`. Max 500 events per batch. |
-| `routes-admin.js` | `/admin` UI + API. Admin role only. Status, installations, repos, recent scans, users. Change-password for any user. |
-| `routes-dashboard.js` | `/dashboard` UI + API. Admin + viewer. Stat cards, 12-week trend chart, knowledge gaps, top rules, recent scans. |
+| `server-config.js` | Config hierarchy: ENV → `config.yml` → defaults. Fields: host, port, log_level, session_ttl_hours, jwt_secret, public_key_path, license_path, db_path. |
+| `db.js` | SQLite abstraction via `better-sqlite3`. Tables: installations, repos, scans, scan_categories, scan_top_rules, raw_events, server_config, sessions, users. Query functions include drill-down: `getRuleDetail`, `getRepoDetail`, `getInstallationDetail`. |
+| `auth.js` | License validation (Ed25519 + machine fingerprint), Bearer token auth for CLI events, `requireFeature()` middleware. |
+| `session-auth.js` | JWT sign/verify (HS256), httpOnly cookie helpers, in-memory rate limiter, `requireAuth` / `requireAdmin` / `requireDashboard` middleware. |
+| `admin-auth.js` | User account management, scrypt password hashing, `ensureAdminExists()`, `renderErrorPage()`. |
+| `ui-helpers.js` | `renderNavbar(user, activePage)` — shared nav. `renderLogoutScript()` — POST /auth/logout + redirect. |
+| `routes-auth.js` | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `GET /login` HTML page. |
+| `routes-health.js` | `GET /api/v1/health` (public), `GET /api/v1/entitlements` (Bearer). |
+| `routes-events.js` | `POST /api/v1/events/batch` (Bearer). Validates, calls `db.insertEvents()`. Max 500/batch. |
+| `routes-admin.js` | `/admin` UI + API. Admin role only. Status, installations, scans, users, change-password. |
+| `routes-dashboard.js` | `/dashboard` UI + API. Admin + viewer. Stat cards, trend, knowledge gaps, top rules, recent scans, repos. All clickable → detail pages. |
+| `routes-detail.js` | Drill-down detail pages. Rule/repo/installation views with trend charts and cross-navigation. |
 
 ### Database schema
 
@@ -114,12 +107,12 @@ scans           session_id, installation_id, repo_id, hook, findings by severity
 scan_categories scan_id → category, critical, high, medium, exposure counts
 scan_top_rules  scan_id → rule_id, rule_name, severity, count
 raw_events      received_at, payload (JSON verbatim)
-server_config   key/value (api_token, machine_fingerprint)
+server_config   key/value (api_token, machine_fingerprint, jwt_secret)
+sessions        jti, user_id, username, role, created_at, expires_at, invalidated
 users           username, password_hash, salt, role, created_at, last_login
 ```
 
 ### Configuration
-
 ```
 config.yml          ← gitignored, active configuration
 config.example.yml  ← committed template
