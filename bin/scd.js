@@ -338,14 +338,39 @@ program
 
 program
   .command('approve')
-  .description('Add a config exception for a finding')
-  .option('--rule <id>', 'Rule ID to except (e.g. FRONT-001)')
-  .option('--file <path>', 'File path')
-  .option('--line <n>', 'Line number')
+  .description('Mark a finding as an accepted risk exception (requires team-lead approval via scd-server)')
+  .option('--rule <id>',    'Rule ID (e.g. PY-INJ-001)')
+  .option('--file <path>',  'File path')
+  .option('--line <n>',     'Line number')
+  .option('--reason <text>','Reason why this risk is accepted (required)')
   .action(async (opts) => {
     const { addException } = require('../lib/exception-manager');
     const repoRoot = getRepoRoot();
-    await addException(repoRoot, opts);
+    await addException(repoRoot, opts, 'exception');
+  });
+
+
+program
+  .command('ignore')
+  .description('Mark a finding as a false positive (requires team-lead approval via scd-server)')
+  .option('--rule <id>',    'Rule ID (e.g. PY-PATH-001)')
+  .option('--file <path>',  'File path')
+  .option('--line <n>',     'Line number')
+  .option('--reason <text>','Reason why this is a false positive (required)')
+  .action(async (opts) => {
+    const { addException } = require('../lib/exception-manager');
+    const repoRoot = getRepoRoot();
+    await addException(repoRoot, opts, 'ignore');
+  });
+
+
+program
+  .command('sync')
+  .description('Pull approved exceptions from scd-server and update local config')
+  .action(async () => {
+    const { syncExceptions } = require('../lib/exception-manager');
+    const repoRoot = getRepoRoot();
+    await syncExceptions(repoRoot);
   });
 
 
