@@ -15,7 +15,7 @@ bin/scd.js                  ← CLI entry point. All scd commands defined here.
 |---|---|
 | `scanner-full.js` | Full OWASP scan. Loads all rule modules, applies vendor/minified/build-tool filters, runs antipattern checks with lookbehind support. |
 | `scanner-secrets.js` | Fast secrets-only scan. Used by pre-commit hook. |
-| `scanner-manual.js` | Interactive manual scan mode. |
+| `scanner-manual.js` | Manual scan mode. Exports `discoverFiles(target, opts)` and `isVendorPath(filePath)`. Supports `--include-vendor` and `--vendor-only` opts. |
 | `deep-analyzer.js` | Sends findings to Claude API. Sends only: filename + rule ID + triggering line + 8 lines context. Respects `trust_level`. |
 
 #### Rules
@@ -28,46 +28,53 @@ bin/scd.js                  ← CLI entry point. All scd commands defined here.
 | `rules/rules-aspx.js` | 17 | ASP.NET markup (aspx/ascx) |
 | `rules/rules-aspx-cs.js` | 26 | ASP.NET C# code-behind |
 | `rules/rules-sensitive-files.js` | ~50 | Sensitive filenames + content patterns |
-| `rules/rules-infra-leakage.js` | 21 | Infrastructure leakage (localhost, RFC1918, connection strings) |
+| `rules/rules-infra-leakage.js` | 21 | Infrastructure leakage. Exports `ADDR_AS_DATA` constant for address-as-data antipattern. |
 
 **Total: 172 rules** – CRITICAL: 63, HIGH: 69, MEDIUM: 10, EXPOSURE: 30
+
+#### Key rule antipattern constants (rules-infra-leakage.js)
+| Constant | Purpose |
+|---|---|
+| `DEV_CONTEXT` | Excludes example/test/mock/placeholder contexts |
+| `LINK_EXAMPLE` | Excludes example.com and placeholder URLs |
+| `ENV_VAR_REF` | Excludes env-var fallback patterns |
+| `ADDR_AS_DATA` | Excludes addresses used in comparisons, validation, log calls, docstrings |
 
 #### Store & config
 | File | Responsibility |
 |---|---|
-| `store.js` | Central path management. `getRepoId()`, `getRepoIdentity()`, `updateMeta()`, `listRepos()`, all store paths. |
-| `store-verify.js` | Verify repos against disk. Statuses: OK/MISSING/STALE/ORPHAN. Windows-compatible archive. |
+| `store.js` | Central path management. `getRepoId()`, `getRepoIdentity()`, `updateMeta()`, all store paths. |
+| `store-verify.js` | Verify repos against disk. Statuses: OK/MISSING/STALE/ORPHAN. Windows-compatible. |
 | `scan-cache.js` | Per-scan storage. `saveCache()`, `loadCache()`, `loadScan()`. |
-| `config.js` | Reads `config.yml` from store. Handles `trust_level`, `deep_delay_ms`, rule overrides, exceptions. |
+| `config.js` | Reads `config.yml` from store. Handles `trust_level`, `deep_delay_ms`, exceptions. |
 | `global-config.js` | Manages `~/.scd/config`. API key, central URL, token. |
 
 #### Push queue
 | File | Responsibility |
 |---|---|
-| `push-queue.js` | Offline-first event queue. `enqueue()`, `flush()`, `queueSize()`, `staleCount()`, `isPastGrace()`. Sends meta (installationId, repoId, hostname, platform, scdVersion) with each flush. |
+| `push-queue.js` | Offline-first event queue. `enqueue()`, `flush()`. Sends meta (installationId, repoId, hostname, platform, scdVersion) + OWASP categories + top rules with each flush. |
 
 #### Reports
 | File | Responsibility |
 |---|---|
-| `report-html.js` | Full HTML report with Executive Summary, Remediation Plan, All Findings, Deep Analysis tabs. |
+| `report-html.js` | Full HTML report: Executive Summary, Remediation Plan, All Findings, Deep Analysis tabs. |
 | `report-index.js` | HTTP server index page. |
 | `report-markdown.js` | Markdown report. |
 | `report-json.js` | JSON report. |
-| `audit.js` | Writes to `audit.log` (JSONL). Calls `enqueue()` with full category + top_rules breakdown. |
-| `audit-report.js` | Reads and formats audit log. |
+| `audit.js` | Writes to `audit.log` (JSONL). Calls `enqueue()` with category + top_rules breakdown. |
+| `export-findings.js` | Exports findings to JSON. Default: all findings. `deepOnly: true` for deep-analysis-only. |
 
 #### CLI support
 | File | Responsibility |
 |---|---|
 | `rule-registry.js` | Central catalogue of all 172 rules. Exports `RULES_VERSION`. |
-| `output-terminal.js` | Terminal output formatting for scan results. |
+| `output-terminal.js` | Terminal output formatting. |
 | `init-repo.js` | `scd init` logic. |
 | `installer.js` | Hook installation/removal. `HOOKS_DIR = ~/.scd/hooks`. |
-| `doctor.js` | `scd doctor` – verifies setup, push queue status, stale events, grace period. |
+| `doctor.js` | `scd doctor` – verifies setup, push queue status, stale events. |
 | `exception-manager.js` | Manages exceptions in `config.yml`. |
 | `resolve-manager.js` | Marks findings as resolved. |
 | `insights-analyzer.js` | Reads audit log, computes behavioral statistics. |
-| `insights-output.js` | Formats insights for terminal. |
 | `git-utils.js` | Git helpers: remote URL, repo root, branch, changed files. |
 
 ---
@@ -76,7 +83,7 @@ bin/scd.js                  ← CLI entry point. All scd commands defined here.
 
 ### Entry point
 ```
-server.js                   ← Express app, startup, graceful shutdown, route registration.
+server.js                   ← Express app, startup, route registration.
                                Supports --host, --port, --help CLI flags.
                                Root / → redirect to /dashboard.
 ```
@@ -86,16 +93,16 @@ server.js                   ← Express app, startup, graceful shutdown, route r
 | File | Responsibility |
 |---|---|
 | `server-config.js` | Config hierarchy: ENV → `config.yml` → defaults. Fields: host, port, log_level, session_ttl_hours, jwt_secret, public_key_path, license_path, db_path. |
-| `db.js` | SQLite abstraction via `better-sqlite3`. Tables: installations, repos, scans, scan_categories, scan_top_rules, raw_events, server_config, sessions, users. Query functions include drill-down: `getRuleDetail`, `getRepoDetail`, `getInstallationDetail`. |
-| `auth.js` | License validation (Ed25519 + machine fingerprint), Bearer token auth for CLI events, `requireFeature()` middleware. |
-| `session-auth.js` | JWT sign/verify (HS256), httpOnly cookie helpers, in-memory rate limiter, `requireAuth` / `requireAdmin` / `requireDashboard` middleware. |
+| `db.js` | SQLite via `better-sqlite3`. Tables: installations, repos, scans, scan_categories, scan_top_rules, raw_events, server_config, sessions, users. Drill-down: `getRuleDetail`, `getRepoDetail`, `getInstallationDetail`. |
+| `auth.js` | License validation (Ed25519 + machine fingerprint), Bearer token auth, `requireFeature()` middleware. |
+| `session-auth.js` | JWT sign/verify (HS256), httpOnly cookie, in-memory rate limiter, `requireAuth`/`requireAdmin`/`requireDashboard` middleware. |
 | `admin-auth.js` | User account management, scrypt password hashing, `ensureAdminExists()`, `renderErrorPage()`. |
 | `ui-helpers.js` | `renderNavbar(user, activePage)` — shared nav. `renderLogoutScript()` — POST /auth/logout + redirect. |
 | `routes-auth.js` | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `GET /login` HTML page. |
 | `routes-health.js` | `GET /api/v1/health` (public), `GET /api/v1/entitlements` (Bearer). |
 | `routes-events.js` | `POST /api/v1/events/batch` (Bearer). Validates, calls `db.insertEvents()`. Max 500/batch. |
 | `routes-admin.js` | `/admin` UI + API. Admin role only. Status, installations, scans, users, change-password. |
-| `routes-dashboard.js` | `/dashboard` UI + API. Admin + viewer. Stat cards, trend, knowledge gaps, top rules, recent scans, repos. All clickable → detail pages. |
+| `routes-dashboard.js` | `/dashboard` UI + API. Admin + viewer. Stat cards, trend, knowledge gaps, top rules, recent scans, repos. |
 | `routes-detail.js` | Drill-down detail pages. Rule/repo/installation views with trend charts and cross-navigation. |
 
 ### Database schema

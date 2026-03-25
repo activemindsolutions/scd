@@ -82,13 +82,15 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 | `scd init` | Register repo and install git hooks |
 | `scd scan [target]` | Run a full security scan |
 | `scd scan --deep` | Scan with Claude API deep analysis |
+| `scd scan --include-vendor` | Include vendor/dependency code in scan |
+| `scd scan --vendor-only` | Scan only vendor/dependency code (supply chain) |
 | `scd scan --deep --deep-delay <ms>` | Add delay between API calls (rate limit prevention) |
 | `scd report` | Generate report from last scan (HTML default) |
 | `scd report --serve` | Serve report via local HTTP server |
 | `scd report --serve --index` | Always show report index page |
 | `scd report --scan <id>` | Generate report from a specific saved scan |
-| `scd export-findings` | Export findings from a scan to JSON for external review |
-| `scd export-findings --all` | Include all findings, not just those with deep analysis |
+| `scd export-findings` | Export all findings from a scan to JSON for external review |
+| `scd export-findings --deep-only` | Export only findings that have a deep analysis result |
 | `scd export-findings --severity critical` | Filter exported findings by severity |
 | `scd export-findings --scan <id>` | Export from a specific saved scan |
 | `scd approve` | Create a reviewed exception for a finding |
@@ -218,11 +220,11 @@ Exceptions include a hash of the relevant code line. If the code changes, the ex
 `scd export-findings` produces a self-contained JSON snapshot of findings from a completed scan — useful for sharing with an external reviewer without giving them access to the codebase.
 
 ```bash
-# Export findings that have deep analysis results (default)
+# Export all findings (default)
 scd export-findings
 
-# Export all findings regardless of deep analysis
-scd export-findings --all
+# Export only findings that have deep analysis results
+scd export-findings --deep-only
 
 # Filter by severity or rule
 scd export-findings --severity critical
@@ -235,7 +237,7 @@ scd export-findings --scan 2026-03-17T132421
 scd export-findings --output /tmp/review-findings.json
 ```
 
-The output file is named `scd-findings-{scanId}.json` in the current directory by default. It includes finding details, per-rule statistics, FP rates, and — when `--all` is used — findings that have no deep analysis (with `deep: null`).
+The output file is named `scd-findings-{scanId}.json` in the current directory by default. It includes finding details, per-rule statistics, FP rates, and deep analysis results where available. Findings without deep analysis appear with `deep: null`. Use `--deep-only` to export only findings with deep analysis.
 
 ---
 

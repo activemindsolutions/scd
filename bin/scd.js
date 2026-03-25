@@ -53,13 +53,22 @@ program
   .option('--no-limit', 'Scanna även filer över storleksgränsen (30s timeout/fil – kan vara långsamt)')
   .option('--deep',           'Enable Claude API deep analysis of CRITICAL/HIGH findings')
   .option('--deep-delay <ms>', 'Delay in ms between --deep API calls (overrides config deep_delay_ms)')
-  .option('--no-audit',       'Skip audit logging for this scan')
+  .option('--no-audit',        'Skip audit logging for this scan')
+  .option('--include-vendor',  'Include vendor/dependency code in scan (node_modules, site-packages, vendor/ etc.)')
+  .option('--vendor-only',     'Scan only vendor/dependency code (supply chain audit)')
   .action(async (targets, opts) => {
     const repoRoot = getRepoRoot();
     const config   = loadConfig(repoRoot);
 
+    // Validate vendor flags
+    if (opts.includeVendor && opts.vendorOnly) {
+      console.error('\x1b[31m❌ --include-vendor and --vendor-only cannot be used together\x1b[0m');
+      process.exit(1);
+    }
+
     // ── Hook-läge (anropat av git pre-commit/pre-push) ──────────────────
     if (opts.hook) {
+      // Hook mode: git-tracked changed files only — vendor code never appears here
       const files = await getChangedFiles(opts.hook);
       if (files.length === 0) {
         console.log('\x1b[90m[scd] No files to scan.\x1b[0m');
@@ -125,13 +134,13 @@ program
     let files = [], skipped = [];
     try {
       if (targetList.length === 1) {
-        ({ files, skipped } = discoverFiles(targetList[0], { lang: opts.lang, config, noLimit: opts.noLimit || false }));
+        ({ files, skipped } = discoverFiles(targetList[0], { lang: opts.lang, config, noLimit: opts.noLimit || false, includeVendor: !!opts.includeVendor, vendorOnly: !!opts.vendorOnly }));
       } else {
         // Multiple targets (shell glob expansion): merge results, deduplicate by filePath
         const seen = new Set();
         for (const t of targetList) {
           try {
-            const result = discoverFiles(t, { lang: opts.lang, config, noLimit: opts.noLimit || false });
+            const result = discoverFiles(t, { lang: opts.lang, config, noLimit: opts.noLimit || false, includeVendor: !!opts.includeVendor, vendorOnly: !!opts.vendorOnly });
             for (const f of result.files)   { if (!seen.has(f.filePath)) { seen.add(f.filePath); files.push(f); } }
             for (const s of result.skipped) { skipped.push(s); }
           } catch { /* skip targets that don't resolve */ }
@@ -149,13 +158,14 @@ program
       console.log(`\x1b[90m   Stora filer (>512KB) scannas med 30s timeout per fil. Kan vara långsamt.\x1b[0m`);
     }
     const langLabel = opts.lang ? ` [${opts.lang}]` : '';
+    const vendorLabel = opts.vendorOnly ? ' \x1b[33m[vendor-only]\x1b[0m' : opts.includeVendor ? ' \x1b[33m[+vendor]\x1b[0m' : '';
     console.log(`\n\x1b[36m╔══════════════════════════════════════════╗\x1b[0m`);
     const _vt2 = 'Secure Code by Design v' + pkg.version;
     const _pl2 = Math.floor((42 - _vt2.length) / 2);
     const _pr2 = 42 - _vt2.length - _pl2;
     console.log(`\x1b[36m║${ ' '.repeat(_pl2)}${_vt2}${ ' '.repeat(_pr2)}║\x1b[0m`);
     console.log(`\x1b[36m╚══════════════════════════════════════════╝\x1b[0m`);
-    console.log(`\x1b[90m Manual scan${langLabel}: ${scanTarget}\x1b[0m`);
+    console.log(`\x1b[90m Manual scan${langLabel}${vendorLabel}: ${scanTarget}\x1b[0m`);
     console.log(`\x1b[90m ${files.length} file(s) found${skipped.length > 0 ? ` · ${skipped.length} skipped` : ''}\x1b[0m\n`);
 
     if (files.length === 0) {
@@ -1300,7 +1310,7 @@ program
   .option('--scan <id>',        'Scan ID to export (default: latest scan)')
   .option('--severity <level>', 'Filter by severity: critical, high, medium, exposure')
   .option('--rule <id>',        'Filter to a specific rule ID')
-  .option('--all',              'Include all findings, not just those with deep analysis')
+  .option('--deep-only',        'Export only findings that have a deep analysis result')
   .option('--output <path>',    'Output file path (default: ~/.scd/repos/{id}/exports/scd-findings-{scanId}.json)')
   .action(async (opts) => {
     const path  = require('path');
@@ -1326,7 +1336,7 @@ program
       scanId:               opts.scan     || null,
       severity:             opts.severity || null,
       rule:                 opts.rule     || null,
-      all:                  !!opts.all,
+      deepOnly:             !!opts.deepOnly,
       outputPath,
       includeRuleInternals: false,
       command:              'export-findings',
@@ -1343,7 +1353,7 @@ program
     .option('--scan <id>',        'Scan ID to export (default: latest scan)')
     .option('--severity <level>', 'Filter by severity: critical, high, medium, exposure')
     .option('--rule <id>',        'Filter to a specific rule ID')
-    .option('--all',              'Include all findings, not just those with deep analysis')
+    .option('--deep-only',        'Export only findings that have a deep analysis result')
     .option('--output <path>',    'Output file path (default: ~/.scd/repos/{id}/exports/scd-review-{scanId}.json)')
     .action(async (opts) => {
       const path  = require('path');
@@ -1368,7 +1378,7 @@ program
         scanId:               opts.scan     || null,
         severity:             opts.severity || null,
         rule:                 opts.rule     || null,
-        all:                  !!opts.all,
+        deepOnly:             !!opts.deepOnly,
         outputPath,
         includeRuleInternals: true,
         command:              'review-rules',

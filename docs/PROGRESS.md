@@ -1,8 +1,8 @@
 # Secure Code by Design – Progress & Roadmap
 
-_Last updated: 2026-03-23_
+_Last updated: 2026-03-25_
 
-## Status: v0.5.0 – CLI + scd-server Fas 1 & 2 (MVP)
+## Status: v0.5.0 – CLI + scd-server Fas 1 & 2 (MVP) + Rule improvements
 
 **scd CLI** lives at `~/Projects/scd`
 `git@github.com:activemindsolutions/scd.git` (main branch, public)
@@ -25,8 +25,11 @@ Installed and verified working on:
 - ✅ `scd init` – register repo, install git hooks via `core.hooksPath`
 - ✅ `scd scan [target]` – full OWASP scan with all flags
 - ✅ `scd scan --deep` – Claude API deep analysis (CRITICAL/HIGH only)
+- ✅ `scd scan --include-vendor` – include vendor/dependency code in scan
+- ✅ `scd scan --vendor-only` – scan only vendor/dependency code (supply chain audit)
 - ✅ `scd report` – generate HTML/MD/JSON from latest scan
-- ✅ `scd export-findings` – export to structured JSON
+- ✅ `scd export-findings` – export all findings to JSON (default: all findings)
+- ✅ `scd export-findings --deep-only` – export only findings with deep analysis
 - ✅ `scd approve / resolve` – exception and resolution management
 - ✅ `scd audit` – view audit trail
 - ✅ `scd doctor` – verify setup + push queue status
@@ -45,62 +48,59 @@ Installed and verified working on:
 
 **Severity breakdown:** CRITICAL: 63, HIGH: 69, MEDIUM: 10, EXPOSURE: 30
 
+### Rule improvements (2026-03-25)
+- ✅ **PY-INJ-002** — subprocess command injection now requires `shell=True` (was triggering all subprocess calls)
+- ✅ **PY-PATH-001** — path traversal now requires explicit web-input context (was triggering all `open(path, ...)`)
+- ✅ **INFRA-001** — localhost rule now excludes equality checks, docstrings, log statements
+- ✅ **INFRA-002/003/012** — loopback/RFC1918 rules now exclude validation/comparison code
+- ✅ **INFRA-022** — hostname rule now excludes `e.g.` examples in error messages
+- ✅ **INFRA-036** — admin port rule now excludes `log.*` calls
+- ✅ **INFRA-040** — comment IP rule fixed: lookbehind `(?<!:)` prevents `://` matching as comment marker
+- ✅ New `ADDR_AS_DATA` antipattern constant for address-as-data vs address-as-config distinction
+
+### Vendor filtering
+- ✅ `isVendorPath()` — regex-based vendor path detection (site-packages, node_modules, vendor/, venv etc.)
+- ✅ Default scan excludes vendor code
+- ✅ `--include-vendor` flag for full scan including dependencies
+- ✅ `--vendor-only` flag for supply chain audit
+- ✅ Vendor mode shown in scan banner: `[+vendor]` / `[vendor-only]`
+
+### export-findings behaviour change
+- ✅ Default now exports **all findings** (was: deep-only)
+- ✅ `--deep-only` flag replaces old `--all` flag for filtering on deep analysis results
+
 ### Push queue (scd CLI)
-- ✅ Offline-first queue, `~/.scd/push-queue.jsonl`
-- ✅ Bearer token auth, machine fingerprint, repo identity in meta
+- ✅ Offline-first queue, Bearer token auth, machine fingerprint
 - ✅ OWASP category breakdown + top rules sent with each scan event
 - ✅ `tryFlush()` awaited before `process.exit()` in scan commands
-- ✅ `scd doctor` shows push queue status, stale events, grace period
 
-### scd-server — Foundation
+### scd-server — Foundation + Auth
 - ✅ Express + SQLite, `data/scd.db`
-- ✅ `lib/server-config.js` — config hierarchy: ENV → config.yml → defaults
-- ✅ `GET /api/v1/health`, `POST /api/v1/events/batch`, `GET /api/v1/entitlements`
-- ✅ `node server.js --host / --port / --help` — CLI overrides for network binding
+- ✅ JWT session auth (httpOnly cookie, HS256, server-side invalidation)
+- ✅ HTML login form, proper logout, rate limiting (15min lockout after 11 attempts)
+- ✅ `node server.js --host / --port / --help`
 
 ### scd-server — License validation
-- ✅ Ed25519 offline signature verification
-- ✅ Public key from `data/scd-public.pem` (priority: ENV → file → dev mode)
-- ✅ Machine fingerprint binding, expiry check, graceful degradation to Starter
+- ✅ Ed25519 offline signature verification, machine fingerprint binding
 - 🔲 Heartbeat (api.activemind.se) — parked
 
-### scd-server — JWT session auth
-- ✅ `lib/session-auth.js` — JWT HS256, httpOnly+SameSite=Strict cookie
-- ✅ `lib/routes-auth.js` — `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`
-- ✅ HTML login form — replaces Basic Auth completely
-- ✅ JWT secret auto-generated and stored in DB on first startup
-- ✅ Sessions tracked in DB — server-side invalidation on logout
-- ✅ Rate limiting: delay after 5 failed attempts, 15min lockout after 11
-- ✅ Max password length before scrypt — prevents DoS
-- ✅ Timing-safe credential check — constant time even for unknown users
-- ✅ `session_ttl_hours` configurable in `config.yml` (default: 8h)
-
 ### scd-server — Admin UI (`/admin`)
-- ✅ Admin role only — viewer gets HTML 403 error page
-- ✅ Server status, license info, DB stats, installations, recent scans
-- ✅ User management: list users, change any user's password
+- ✅ Admin role only, server status, license info, installations, recent scans
+- ✅ User management: list users, change passwords
 
 ### scd-server — Team Dashboard (`/dashboard`)
 - ✅ Admin + viewer roles
 - ✅ Stat cards: scans 30d/7d, active repos, installations, critical, high, medium+exposure, total
 - ✅ Findings trend chart — 12 weeks (Critical + High + Medium)
-- ✅ Knowledge gaps — OWASP categories with C/H/M/E breakdown, bar visualization
+- ✅ Knowledge gaps — OWASP categories ranked by findings (30d)
 - ✅ Top rules — most-triggered (30d), clickable → rule detail
-- ✅ Recent scans — repo (clickable) + host (clickable), hook, C/H counts
-- ✅ Repositories section — all known repos, clickable → repo detail
+- ✅ Recent scans — repo + host clickable, hook, C/H counts
+- ✅ Repositories section — all repos, clickable → repo detail
 
 ### scd-server — Drill-down detail pages (Nivå 1)
-- ✅ `lib/routes-detail.js` — three detail views, all auth-protected
-- ✅ **Rule detail** (`/dashboard/rule/:id`) — 12w trend, repos affected, installations
-- ✅ **Repo detail** (`/dashboard/repo/:id`) — stats, trend, knowledge gaps, top rules, scans, installations
-- ✅ **Installation detail** (`/dashboard/installation/:id`) — stats, trend, repos, top rules, scans
-- ✅ Cross-navigation between all detail pages
+- ✅ Rule detail, Repo detail, Installation detail
+- ✅ 12-week trend charts, cross-navigation between all views
 - ✅ `db.js` — `getRuleDetail`, `getRepoDetail`, `getInstallationDetail`
-
-### scd-server — Auth & navigation
-- ✅ Shared navbar (`lib/ui-helpers.js`) — role-aware links, Sign out
-- ✅ HTML 403 page for browser, JSON 403 for API calls
-- ✅ `GET /` → redirect to `/dashboard`, `GET /login` → login page
 
 ### scd-server — Database schema
 Tables: `installations`, `repos`, `scans`, `scan_categories`, `scan_top_rules`,
@@ -109,6 +109,12 @@ Tables: `installations`, `repos`, `scans`, `scan_categories`, `scan_top_rules`,
 ---
 
 ## Next on roadmap
+
+### Rule engine — taint analysis (future feature)
+Current regex-based rules cannot track data flow across variable assignments.
+A multi-pass taint analysis engine is needed to follow "tainted" data (external input)
+through variable assignments to dangerous sinks (open(), execute(), system() etc.).
+This is a medium-term architectural improvement — see Architecture doc for design notes.
 
 ### Fas 2 remaining
 - Exception approval flow (developer requests → team lead approves in dashboard)
@@ -135,6 +141,7 @@ Tables: `installations`, `repos`, `scans`, `scan_categories`, `scan_top_rules`,
 
 ## Parked ideas (not forgotten)
 
+- **Taint analysis engine** — multi-pass data flow tracking for Python/JS/PHP rules
 - Drill-down Nivå 3: full findings in scd-server (filenames, code lines, deep analysis)
 - `scan_sensitivity`: `strict | balanced | relaxed` per rule category
 - Deep analysis in pre-push hook (optional, with cost warning)
@@ -153,6 +160,7 @@ Tables: `installations`, `repos`, `scans`, `scan_categories`, `scan_top_rules`,
 - `securityagent.yml` in repo root is template; `config.yml` in store is active — should be unified
 - scd-server requires Node 18 (better-sqlite3 native addon) — dev machine uses nvm wrapper
 - Input sanitization in change-password route (length check only) — acceptable for now
+- PY-PATH-001 still misses cases where path variable is assigned from web input earlier in function — requires taint analysis (on roadmap)
 
 ---
 
