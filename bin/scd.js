@@ -56,6 +56,7 @@ program
   .option('--no-audit',        'Skip audit logging for this scan')
   .option('--include-vendor',  'Include vendor/dependency code in scan (node_modules, site-packages, vendor/ etc.)')
   .option('--vendor-only',     'Scan only vendor/dependency code (supply chain audit)')
+  .option('--verbose',           'Show full file-grouped and rule-grouped output (default: compact summary)')
   .action(async (targets, opts) => {
     const repoRoot = getRepoRoot();
     const config   = loadConfig(repoRoot);
@@ -94,7 +95,7 @@ program
         exceptions_applied: findings.filter(f => f.excepted).length,
       });
 
-      const { output, exitCode } = formatTerminal(findings, opts.hook, config);
+      const { output, exitCode } = formatTerminal(findings, opts.hook, config, { verbose: opts.verbose });
       console.log(output);
       await tryFlush();
       process.exit(exitCode);
@@ -131,6 +132,9 @@ program
     const targetList = rawTargets.length > 0 ? rawTargets : ['.'];
     const scanTarget = targetList.length === 1 ? targetList[0] : targetList.join(', ');
 
+    // Show discovering status — discoverFiles reads all files from disk which can take a moment
+    process.stderr.write('\r\x1b[90m Discovering files…\x1b[0m');
+
     let files = [], skipped = [];
     try {
       if (targetList.length === 1) {
@@ -157,6 +161,7 @@ program
       console.log(`\n\x1b[33m⚠️  --no-limit aktivt – storleksgränsen är inaktiverad.\x1b[0m`);
       console.log(`\x1b[90m   Stora filer (>512KB) scannas med 30s timeout per fil. Kan vara långsamt.\x1b[0m`);
     }
+    process.stderr.write('\r\x1b[K'); // clear discovering status
     const langLabel = opts.lang ? ` [${opts.lang}]` : '';
     const vendorLabel = opts.vendorOnly ? ' \x1b[33m[vendor-only]\x1b[0m' : opts.includeVendor ? ' \x1b[33m[+vendor]\x1b[0m' : '';
     console.log(`\n\x1b[36m╔══════════════════════════════════════════╗\x1b[0m`);
@@ -180,6 +185,9 @@ program
     // Apply CLI filters (--severity, --rule)
     findings = filterFindings(findings, { severity: opts.severity, rule: opts.rule });
 
+    // Show saving status during audit + cache write
+    if (process.stderr.isTTY) process.stderr.write('\r\x1b[90m Saving results…\x1b[0m');
+
     // Audit (unless --no-audit)
     if (opts.audit !== false) {
       logScan(repoRoot, {
@@ -188,6 +196,8 @@ program
         exceptions_applied: findings.filter(f => f.excepted).length,
       });
     }
+
+    if (process.stderr.isTTY) process.stderr.write('\r\x1b[K'); // clear saving status
 
     // Output
     if (opts.format === 'json') {
@@ -224,7 +234,7 @@ program
 
       // Terminal summary first
       const timedOut2 = findings._timedOut || [];
-      const { output: termOut } = formatTerminal(findings, 'manual', config, { skipped, timedOut: timedOut2 });
+      const { output: termOut } = formatTerminal(findings, 'manual', config, { skipped, timedOut: timedOut2, verbose: opts.verbose });
       console.log(termOut);
 
       // OSC 8 clickable link to report (same terminal detection as output-terminal.js)
@@ -245,7 +255,7 @@ program
     }
 
     const timedOut = findings._timedOut || [];
-    const { output } = formatTerminal(findings, 'manual', config, { skipped, timedOut });
+    const { output } = formatTerminal(findings, 'manual', config, { skipped, timedOut, verbose: opts.verbose });
     console.log(output);
 
     // ── Deep analysis (--deep) ───────────────────────────────────────────
