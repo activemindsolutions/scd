@@ -75,34 +75,64 @@ production so that pentests can focus on harder problems.
 
 ## Rule engine principles
 
-### Current approach: regex-based
+### Current approach: regex-based + taint analysis
 Rules use regex patterns with optional antipatterns. Antipattern check uses a sliding
-window (120 chars behind, 300 chars ahead of match). This works well for obvious patterns
-but cannot track data flow across variable assignments.
+window (120 chars behind, 300 chars ahead of match).
 
-### Known limitation: no taint analysis
-Regex rules cannot determine where a variable's value came from. Example:
-```python
-path = request.args.get('file')   # tainted
-# ... 50 lines later ...
-open(path, 'r')                   # danger — but regex won't connect these
+### Taint analysis
+`lib/taint-register.js` provides single-file pre-scan taint tracking.
+Built once per file before rule scanning — identifies variables assigned from
+user-controlled sources (HTTP input, CLI args).
+
+```javascript
+const reg = buildTaintRegister(content, 'php');
+reg.has('id')        // → true if $id = $_GET['id'] found
+reg.getLine('id')    // → line number of assignment
+reg.getSource('id')  // → '$_GET["id"]'
 ```
-This is a planned improvement (see roadmap). Current mitigation: `--deep` analysis
-via Claude API provides contextual understanding that bridges this gap.
+
+Rules with `taintAware: true` use the register:
+- If register is empty → skip matchAll entirely (early exit, performance)
+- If varName cannot be extracted → skip finding (no fall-through)
+- If varName is found but not tainted → skip finding
+- If varName is tainted → flag with taintSource annotation
+
+Three extraction strategies (set via `taintExtract` on rule):
+- `concat` (default) — `. $varname` pattern
+- `interpolation` — `$varname` inside double-quoted string
+- `func_concat` — `func($varname)` or `func("..." . $varname)`
+
+### Known limitation: no cross-function taint
+Current taint tracking is single-file, single-assignment. Does not handle:
+- Cross-function taint propagation
+- Chained assignments
+- Conditional assignments
+
+`--deep` analysis via Claude API bridges this gap contextually.
+
+### Regex design rules (CRITICAL — learned from bugs)
+1. **Always include `\n` in negated char classes** used with `matchAll` on full file content.
+   `[^"]{0,300}` → must be `[^\n"]{0,300}` to prevent cross-line matching
+2. **taintAware rules must not fall through** when no variable name can be extracted.
+   No varName = no taint path = skip the finding (use `continue`)
+3. **taintAware rules use early exit** when `taintReg.isEmpty()` — skip matchAll entirely
+
+### scan_mode config
+`scan_mode: full` (default) — all rules including taint analysis
+`scan_mode: fast` — regex rules only, no taint analysis (for 800+ file codebases)
 
 ### Rule design guidelines
-- **Pattern**: should match the dangerous construct, as specifically as possible
-- **Antipattern**: should exclude safe patterns in a window around the match
-- **Prefer precision over recall** for project-code rules (fewer FP is better than more TP)
-- **ADDR_AS_DATA**: use this antipattern constant for INFRA rules to exclude cases
-  where addresses are treated as data (comparisons, validation, log output)
+- **Pattern**: match the dangerous construct as specifically as possible
+- **Antipattern**: exclude safe patterns in a window around the match
+- **Prefer precision over recall** for project-code rules (fewer FP > more TP)
+- **ADDR_AS_DATA**: antipattern constant for INFRA rules — excludes address-as-data cases
 - **Vendor code**: handled by `isVendorPath()` filter, not by rule antipatterns
+- **taintAware**: set when the rule requires a tainted variable at the sink
 
 ### Vendor filtering
 - `lib/scanner-manual.js` exports `isVendorPath(filePath)`
 - Default scan excludes vendor paths
 - `--include-vendor` and `--vendor-only` flags control this
-- Vendor paths: site-packages, node_modules, vendor/, venv, __pycache__, bin/Release, obj/Debug
 
 ---
 
@@ -136,19 +166,25 @@ Self-hosted by design, not as a limitation.
 | `GET /api/v1/health` | none | Server + license status |
 | `POST /api/v1/events/batch` | Bearer token | Receive scan events from CLI |
 | `GET /api/v1/entitlements` | Bearer token | License features for CLI |
+| `POST /api/v1/exceptions/batch` | Bearer token | Receive exception requests from CLI |
+| `GET /api/v1/exceptions/approved` | Bearer token | Return approved exceptions for scd sync |
 | `GET /admin` | JWT (admin) | Admin dashboard UI |
 | `GET /admin/api/*` | JWT (admin) | Admin API |
-| `GET /dashboard` | JWT (admin+viewer) | Team dashboard UI |
-| `GET /dashboard/api/*` | JWT (admin+viewer) | Dashboard API |
-| `GET /dashboard/rule/:id` | JWT (admin+viewer) | Rule detail page |
-| `GET /dashboard/repo/:id` | JWT (admin+viewer) | Repo detail page |
-| `GET /dashboard/installation/:id` | JWT (admin+viewer) | Installation detail page |
+| `GET /dashboard` | JWT (admin+viewer+team-lead) | Team dashboard UI |
+| `GET /dashboard/api/*` | JWT (admin+viewer+team-lead) | Dashboard API |
+| `POST /dashboard/api/exceptions/:id/approve` | JWT (admin+team-lead) | Approve exception |
+| `POST /dashboard/api/exceptions/:id/reject` | JWT (admin+team-lead) | Reject exception |
+| `GET /dashboard/rule/:id` | JWT (admin+viewer+team-lead) | Rule detail page |
+| `GET /dashboard/repo/:id` | JWT (admin+viewer+team-lead) | Repo detail page |
+| `GET /dashboard/installation/:id` | JWT (admin+viewer+team-lead) | Installation detail page |
 
-### Auth (JWT)
+### Auth (JWT + Bearer)
 - `lib/session-auth.js` — JWT HS256, httpOnly+SameSite=Strict cookie
+- All protected routes accept JWT cookie OR API Bearer token
+- Bearer token role: configurable via `POST /admin/api/token-role` (default: admin)
 - `lib/admin-auth.js` — scrypt password hashing, first-run setup
-- `lib/routes-auth.js` — login/logout/me + HTML login page
-- Two roles: `admin` and `viewer`
+- Three roles: `admin`, `team-lead`, `viewer`
+- `requireApprover` middleware — admin + team-lead only
 - Sessions in `sessions` table — invalidated on logout
 - Rate limiting: 15min lockout after 11 failed attempts
 
@@ -156,14 +192,15 @@ Self-hosted by design, not as a limitation.
 | Phase | Name | Key deliverables |
 |---|---|---|
 | Fas 1 | Foundation | Push queue, license validation, scd-server MVP, admin UI ✅ |
-| Fas 2 | Team value | Dashboard ✅, drill-down Nivå 1 ✅, exception approvals 🔲 |
+| Fas 2 | Team value | Dashboard ✅, drill-down Nivå 1 ✅, exception approval ✅ |
 | Fas 3 | Professional add-ons | CRA/NIS2 reports, plugin API, rule packs, rule signing |
 
 ### Internal commands (not in README or scd --help)
 `scd review-rules` — hidden command for Activemind-internal rule quality analysis.
 
 ### Parked (not forgotten)
-- Taint analysis engine — multi-pass data flow tracking for rules
+- Full taint analysis engine — AST-based multi-pass tracking
+- Rule customization per repo — needs careful design to prevent risk normalisation
 - Heartbeat (api.activemind.se)
 - `pkg` binary distribution — revisit before first customer
 - Activemind-hosted cloud central

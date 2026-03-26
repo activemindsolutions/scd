@@ -24,6 +24,13 @@ block_on_high: true
 # Always report all findings, even if action is warn or skip
 report_all: true
 
+# ── Scan mode ────────────────────────────────────────────────────
+# full (default) – All rules including taint analysis (tracks user input across assignments)
+# fast           – Regex rules only, no taint analysis. Use for large codebases (800+ files)
+#                  where scan time is a concern. Taint analysis can still be run on-demand
+#                  with: scd scan (override by temporarily removing this line)
+scan_mode: full
+
 # Time to wait for deep analysis results before proceeding with commit/push (in milliseconds)
 deep_delay_ms: 2000
 
