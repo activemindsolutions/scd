@@ -258,6 +258,13 @@ program
     const { output } = formatTerminal(findings, 'manual', config, { skipped, timedOut, verbose: opts.verbose });
     console.log(output);
 
+    // ── Sync notice ──────────────────────────────────────────────────────
+    try {
+      const { getSyncNotice } = require('../lib/exception-manager');
+      const notice = getSyncNotice(repoRoot);
+      if (notice) console.log('  ' + notice + '\n');
+    } catch { /* non-fatal */ }
+
     // ── Deep analysis (--deep) ───────────────────────────────────────────
     let deepResults = null;
     if (opts.deep) {
@@ -386,15 +393,32 @@ program
 
 
 program
-  .command('resolve')
-  .description('Mark an EXPOSURE finding as handled at service level')
-  .option('--rule <id>', 'Regel-ID (t.ex. FRONT-001)')
-  .option('--file <path>', 'Fil')
-  .option('--line <n>', 'Radnummer')
+  .command('exceptions')
+  .description('List exceptions and ignores in the local store')
+  .option('--list <status>', 'Filter by status: pending | approved | rejected | all (default: all)')
   .action(async (opts) => {
-    const { resolveExposure } = require('../lib/resolve-manager');
+    const { listExceptions } = require('../lib/exception-manager');
     const repoRoot = getRepoRoot();
-    await resolveExposure(repoRoot, opts);
+    listExceptions(repoRoot, opts.list || 'all');
+  });
+
+
+program
+  .command('resolve')
+  .description('Mark an EXPOSURE finding as handled, or remove a rejected exception by ID')
+  .option('--rule <id>',      'Rule ID (for EXPOSURE findings)')
+  .option('--file <path>',   'File path (for EXPOSURE findings)')
+  .option('--line <n>',      'Line number (for EXPOSURE findings)')
+  .option('--rejected <id>', 'Remove a rejected exception from local config by exception ID')
+  .action(async (opts) => {
+    const repoRoot = getRepoRoot();
+    if (opts.rejected) {
+      const { removeRejected } = require('../lib/exception-manager');
+      removeRejected(repoRoot, opts.rejected);
+    } else {
+      const { resolveExposure } = require('../lib/resolve-manager');
+      await resolveExposure(repoRoot, opts);
+    }
   });
 
 
