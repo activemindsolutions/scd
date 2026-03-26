@@ -362,11 +362,12 @@ program
 
 program
   .command('ignore')
-  .description('Mark a finding as a false positive (requires team-lead approval via scd-server)')
+  .description('Ignore a finding (requires team-lead approval via scd-server)')
   .option('--rule <id>',    'Rule ID (e.g. PY-PATH-001)')
   .option('--file <path>',  'File path')
   .option('--line <n>',     'Line number')
-  .option('--reason <text>','Reason why this is a false positive (required)')
+  .option('--reason <text>','Reason for ignoring this finding (required)')
+  .option('--tag <tag>',    'Optional tag for filtering (e.g. false_positive, out_of_scope, third_party)')
   .action(async (opts) => {
     const { addException } = require('../lib/exception-manager');
     const repoRoot = getRepoRoot();
