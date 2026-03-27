@@ -2,7 +2,7 @@
 
 _Last updated: 2026-03-26_
 
-## Status: v0.5.1 – Terminal UX + Exception flow end-to-end + Resolved status
+## Status: v0.5.1 – Terminal UX + Exception flow end-to-end + CRA Report MVP
 
 **scd CLI** lives at `~/Projects/scd`
 `git@github.com:activemindsolutions/scd.git` (main branch, public)
@@ -117,7 +117,7 @@ Complete lifecycle: CLI → server → approval → sync → scan suppression �
 ### scd-server — Team Dashboard (`/dashboard`)
 - ✅ Stat cards including clickable "Pending approvals" card (admin/team-lead only)
 - ✅ Findings trend chart (12 weeks), knowledge gaps, top rules, recent scans, repos
-- ✅ Navbar: Exceptions link with red badge showing pending count (30s refresh)
+- ✅ Navbar: Reports link (all roles), Exceptions link with red badge (admin/team-lead)
 
 ### scd-server — Exception approval flow
 - ✅ Exceptions table: `type`, `tag`, `status`, `reviewed_by`, `review_comment`, `db_id`
@@ -135,7 +135,22 @@ Complete lifecycle: CLI → server → approval → sync → scan suppression �
 - ✅ Approved/Rejected/Resolved: View modal with full audit trail
 - ✅ Resolved modal shows `updated_at` as "fixed" timestamp
 - ✅ Tag shown as blue chip in table and modal
-- ✅ `type` pill: `ignore` or `exception` (not "FP ignore")
+- ✅ `type` pill: `ignore` or `exception`
+
+### scd-server — Reports (`/reports`) — MVP
+- ✅ Reports index page — lists available and coming reports
+- ✅ CRA Compliance Report (`/reports/cra`) — HTML, printable to PDF via browser
+  - Period filter: 30 / 90 / 180 / 365 days (default 90)
+  - Repository filter: all repos or specific repo
+  - Section 1: Executive Summary (scans, repos, installations, clean scans, period, status)
+  - Section 2: Vulnerability Management Activity (findings by severity, monthly trend)
+  - Section 3: OWASP Top 10 Coverage (findings per category with distribution bar)
+  - Section 4: Documented Risk Decisions (approved exceptions with reviewer + rationale)
+  - Section 5: Remediated Vulnerabilities (resolved exceptions — shown if any exist)
+  - Section 6: Open Vulnerabilities (current CRITICAL/HIGH per repo, latest scan)
+  - `@media print` CSS for clean PDF output (white background, hidden filters/navbar)
+- ✅ `GET /reports/api/cra` — JSON data endpoint (used by report page)
+- ✅ Three CRA db queries: `getCRAScanSummary`, `getCRAOpenFindings`, `getCRARiskRegister`
 
 ### scd-server — Drill-down detail pages (Nivå 1)
 - ✅ Rule detail, Repo detail, Installation detail with 12-week trend charts
@@ -150,7 +165,13 @@ Exception status values: `pending` | `approved` | `rejected` | `resolved`
 
 ## Next on roadmap
 
-### `pkg` – Binary distribution (next priority before first customer)
+### PDF layout polish (next — before demo)
+- `@media print` improvements: page headers, footers with page numbers
+- Section break-inside: avoid on tables and stat boxes
+- Cover page with org name, report date, classification
+- Consider puppeteer/wkhtmltopdf for server-side PDF generation (future)
+
+### `pkg` – Binary distribution (before first customer)
 - Eliminates Node version conflicts for customers
 - Requires solving `better-sqlite3` native addon packaging
 - One binary per platform: macOS (arm64 + x64), Linux (x64)
@@ -164,20 +185,24 @@ Exception status values: `pending` | `approved` | `rejected` | `resolved`
 - Drill-down Nivå 2: per-finding aggregates in push events
 
 ### Fas 3
-- CRA/NIS2 compliance reports
+- CRA/NIS2 compliance reports — polish and additional report types (see Reports Roadmap)
 - Plugin API + commercial rule packs
 - Rule signing (Activemind-verified vs community)
 
-### Server-side notifications (parked, Fas 3+)
-- Email/Discord/webhook notifications for pending approvals
-- Useful complement to CLI sync notice
-- Design separately when local central is stable
+---
 
-### `scd deps` – Dependency scanning (parked)
-- CVE check via OSV API (`api.osv.dev/v1/query`)
+## Reports Roadmap (Fas 3+)
 
-### Heartbeat (api.activemind.se) (parked)
-- 24h heartbeat for license validation, 7-day grace period
+| Report | Status | CRA/NIS2 ref |
+|---|---|---|
+| CRA Compliance Report | ✅ MVP | Art. 13, 14, Annex I+II |
+| NIS2 Compliance Report | Planned | Art. 21 NIS2 |
+| Vulnerability Disclosure Register | Planned | CRA Art. 14 |
+| Remediation Timeline | Planned | CRA Art. 13 §2 |
+| SDLC Security Evidence | Planned | CRA Annex II |
+| Per-repo / per-installation filters | Planned | All |
+| Server-side PDF generation | Planned | All |
+| audit.log sync CLI→server | Prerequisite | Drill-down Nivå 3 |
 
 ---
 
@@ -194,6 +219,7 @@ Exception status values: `pending` | `approved` | `rejected` | `resolved`
 - Config signing (supply chain protection)
 - Activemind-hosted cloud central (deferred until local central is stable)
 - Admin menu item visibility based on role
+- Server-side notifications (email/Discord/webhook for pending approvals) — Fas 3+
 
 ---
 
@@ -203,6 +229,7 @@ Exception status values: `pending` | `approved` | `rejected` | `resolved`
 - `securityagent.yml` in repo root is template; `config.yml` in store is active — should be unified
 - scd-server requires Node 18 (better-sqlite3 native addon) — dev machine uses nvm wrapper
 - PY-PATH-001 misses taint-tracked cases — requires Python taintAware rules (on roadmap)
+- CRA report Section 2 shows aggregated scan totals, not unique findings — needs clarification note
 
 ### Regex design rules (learned from taint implementation)
 - All patterns using `[^"]+` or `[^']+` with `matchAll` on full file content **must**
