@@ -11,7 +11,7 @@ const { formatTerminal } = require('../lib/output-terminal');
 const { getChangedFiles } = require('../lib/git-utils');
 const { loadConfig, getRepoRoot } = require('../lib/config');
 const { logScan } = require('../lib/audit');
-const { saveCache, loadCache, cacheAge } = require('../lib/scan-cache');
+const { saveCache, loadCache, cacheAge, makeScanId } = require('../lib/scan-cache');
 
 const program = new Command();
 
@@ -89,10 +89,12 @@ program
         : await scanFull(files, config);
 
       const blocked = findings.some(f => f.blocks && !f.excepted);
+      const scanId = makeScanId();
 
       logScan(repoRoot, {
         hookType: opts.hook, files, findings, blocked,
         exceptions_applied: findings.filter(f => f.excepted).length,
+        scanId,
       });
 
       const { output, exitCode } = formatTerminal(findings, opts.hook, config, { verbose: opts.verbose });
@@ -188,12 +190,16 @@ program
     // Show saving status during audit + cache write
     if (process.stderr.isTTY) process.stderr.write('\r\x1b[90m Saving results…\x1b[0m');
 
+    // Create one scanId — shared by audit log and scan file for full traceability
+    const scanId = makeScanId();
+
     // Audit (unless --no-audit)
     if (opts.audit !== false) {
       logScan(repoRoot, {
         hookType: 'manual', files, findings,
         blocked: false,  // manual scan never blocks
         exceptions_applied: findings.filter(f => f.excepted).length,
+        scanId,
       });
     }
 
@@ -320,7 +326,7 @@ program
       skipped,
       scanDate:   new Date(),
       deepResults: deepResults ? Array.from(deepResults.entries()) : null,
-    });
+    }, scanId);
 
     // Manual scan: always exit 0 (informational, never blocks workflow)
     await tryFlush();
@@ -1023,23 +1029,24 @@ program
 
       console.log('\n' + BOLD + 'Saved scans' + RESET + '  ' + DIM + scansPath + RESET);
       console.log(DIM + 'Working directory: ' + RESET + CYAN + repoRoot + RESET);
-      console.log(DIM + '─'.repeat(70) + RESET);
-      console.log(DIM + 'Scan ID'.padEnd(22) + 'Date'.padEnd(14) + 'Findings'.padEnd(10) + 'Files'.padEnd(8) + 'Deep' + RESET);
-      console.log(DIM + '─'.repeat(70) + RESET);
+      console.log(DIM + '─'.repeat(72) + RESET);
+      console.log(DIM + 'Scan ID (UTC)'.padEnd(22) + 'Date (local)'.padEnd(22) + 'Findings'.padEnd(10) + 'Files'.padEnd(8) + 'Deep' + RESET);
+      console.log(DIM + '─'.repeat(72) + RESET);
 
       for (const s of scans) {
         const date    = s.scanDate ? new Date(s.scanDate).toLocaleString('en-SE') : '—';
         const deepStr = s.hasDeep ? GREEN + '✓' + RESET : DIM + '—' + RESET;
         console.log(
-          CYAN + s.scanId.padEnd(22) + RESET +
-          DIM  + date.padEnd(14)     + RESET +
+          CYAN + s.scanId.padEnd(22)          + RESET +
+          DIM  + date.padEnd(22)              + RESET +
           (String(s.findingCount)).padEnd(10) +
           DIM + String(s.totalFiles).padEnd(8) + RESET +
           deepStr
         );
       }
-      console.log(DIM + '─'.repeat(70) + RESET);
+      console.log(DIM + '─'.repeat(72) + RESET);
       console.log('  ' + scans.length + ' scan' + (scans.length !== 1 ? 's' : '') + ' saved\n');
+      console.log(DIM + '  Scan IDs are in UTC. Date column shows your local time.' + RESET);
       console.log(DIM + '  scd report --scan <id>   generate report from a specific scan\n' + RESET);
       return;
     }
