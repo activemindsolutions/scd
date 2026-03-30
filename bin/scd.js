@@ -944,14 +944,20 @@ program
       try {
         meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
       } catch {
-        console.log('\n\x1b[33m No meta.json found for this repo.\x1b[0m');
-        console.log(DIM + ' Run scd init to register this repo.\n' + RESET);
+        const repoId = store.getRepoId(repoRoot);
+        console.log('\n\x1b[33m No meta.json found — this repo has not been initialised.\x1b[0m');
+        console.log(DIM + '  Working directory : ' + RESET + CYAN + repoRoot + RESET);
+        console.log(DIM + '  Store ID          : ' + RESET + DIM + repoId + RESET);
+        console.log(DIM + '  Store path        : ' + RESET + DIM + dir + RESET);
+        console.log(DIM + '\n  Run ' + RESET + CYAN + 'scd init' + RESET + DIM + ' to register this repo and install git hooks.\n' + RESET);
         return;
       }
 
       const { cacheAge } = require('../lib/scan-cache');
 
       console.log('\n' + BOLD + 'Secure Code by Design – Repo meta' + RESET);
+      console.log(DIM + '─'.repeat(52) + RESET + '\n');
+      console.log('  ' + DIM + 'Working directory'.padEnd(18) + RESET + CYAN + repoRoot + RESET);
       console.log(DIM + '─'.repeat(52) + RESET + '\n');
 
       const row = (label, value, color) =>
@@ -1003,12 +1009,20 @@ program
       const GREEN = '\x1b[32m';
       const RESET = '\x1b[0m';
 
+      const repoId   = store.getRepoId(repoRoot);
+      const scansPath = store.scansDir(repoRoot);
+
       if (scans.length === 0) {
-        console.log('\n' + DIM + ' No scans found. Run scd scan first.\n' + RESET);
+        console.log('\n\x1b[33m No scans found for this repo.\x1b[0m');
+        console.log(DIM + '  Working directory : ' + RESET + CYAN + repoRoot + RESET);
+        console.log(DIM + '  Store ID          : ' + RESET + DIM + repoId + RESET);
+        console.log(DIM + '  Scans directory   : ' + RESET + DIM + scansPath + RESET);
+        console.log(DIM + '\n  Run ' + RESET + CYAN + 'scd scan' + RESET + DIM + ' from your project root to create a scan.\n' + RESET);
         return;
       }
 
-      console.log('\n' + BOLD + 'Saved scans' + RESET + '  ' + DIM + store.scansDir(repoRoot) + RESET);
+      console.log('\n' + BOLD + 'Saved scans' + RESET + '  ' + DIM + scansPath + RESET);
+      console.log(DIM + 'Working directory: ' + RESET + CYAN + repoRoot + RESET);
       console.log(DIM + '─'.repeat(70) + RESET);
       console.log(DIM + 'Scan ID'.padEnd(22) + 'Date'.padEnd(14) + 'Findings'.padEnd(10) + 'Files'.padEnd(8) + 'Deep' + RESET);
       console.log(DIM + '─'.repeat(70) + RESET);
@@ -1115,14 +1129,15 @@ program
 
     console.log('\n\x1b[1mSecure Code by Design – Store\x1b[0m');
     console.log('\x1b[90m' + '─'.repeat(52) + '\x1b[0m\n');
-    console.log('  Repo:      \x1b[1m' + (meta?.name || path.basename(repoRoot)) + '\x1b[0m');
+    console.log('  Working dir: \x1b[36m' + repoRoot + '\x1b[0m');
+    console.log('  Repo:        \x1b[1m' + (meta?.name || path.basename(repoRoot)) + '\x1b[0m');
     if (identity.type === 'remote') {
-      console.log('  Remote:    \x1b[90m' + identity.identifier + '\x1b[0m');
+      console.log('  Remote:      \x1b[90m' + identity.identifier + '\x1b[0m');
     } else {
-      console.log('  Type:      \x1b[33mpath-based\x1b[0m (no git remote – ID may change if folder moves)');
+      console.log('  Type:        \x1b[33mpath-based\x1b[0m (no git remote – ID may change if folder moves)');
     }
-    console.log('  Store ID:  \x1b[90m' + store.getRepoId(repoRoot) + '\x1b[0m');
-    console.log('  Location:  \x1b[36m' + dir + '\x1b[0m\n');
+    console.log('  Store ID:    \x1b[90m' + store.getRepoId(repoRoot) + '\x1b[0m');
+    console.log('  Location:    \x1b[36m' + dir + '\x1b[0m\n');
 
     if (meta?.lastScan) {
       const { cacheAge } = require('../lib/scan-cache');
