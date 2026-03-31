@@ -43,6 +43,7 @@ production so that pentests can focus on harder problems.
 3. **Self-hosted** – scd-server runs in customer's infrastructure, no data leaves their network
 4. **repoId** = SHA-256 of git remote URL (stable across re-clones)
 5. **English only** – all rule text, CLI output, comments in English
+6. **Scan ID format** – `s-XXXXXXXX` (random 8 hex chars). Not date/time-based — avoids timezone confusion. Same ID used as `session_id` on server for full CLI↔server traceability.
 6. **Rule IDs are stable** – never renumber or rename existing rule IDs
 7. **No npm dependencies added without discussion** – keep install lightweight
 
@@ -202,6 +203,7 @@ Self-hosted by design, not as a limitation.
 - Full taint analysis engine — AST-based multi-pass tracking
 - Rule customization per repo — needs careful design to prevent risk normalisation
 - Heartbeat (api.activemind.se)
+- `pkg` binary distribution — revisit before first customer
 - `pkg` binary distribution — revisit before first customer
 - Activemind-hosted cloud central
 - Config signing

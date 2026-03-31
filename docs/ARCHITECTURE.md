@@ -4,7 +4,8 @@
 
 Secure Code by Design is a hybrid product: an automated security scanning CLI that runs locally
 in the developer's workflow, combined with a self-hosted central server for team visibility,
-and optional AI-powered deep analysis via Claude API.
+and optional AI-powered deep analysis. Deep analysis runs either via Claude API (cloud) or
+via a fully local model through the scd-ai layer — no code leaves the customer's network.
 
 Target market: SMB companies using AI coding tools (Claude Code, GitHub Copilot, Cursor)
 who generate code faster than their security awareness can keep up with.
@@ -14,17 +15,29 @@ who generate code faster than their security awareness can keep up with.
 | Tier | Price | Features |
 |---|---|---|
 | Starter | Free / Open Source | Local scanning, git hooks, HTML reports |
-| Team | 2 499 SEK/month | + scd-server, team dashboard, trend analysis |
-| Professional | 7 499 SEK/month | + CRA/NIS2 reports, commercial rule packs, consulting upsell |
+| Team | 499 SEK/mth + 149 SEK/active dev | + scd-server, team dashboard, trend analysis |
+| Professional | 999 SEK/mth + 249 SEK/active dev | + CRA/NIS2 reports, commercial rule packs, consulting upsell |
+
+Add-ons (available on any paid tier):
+
+| Add-on | Price | Description |
+|---|---|---|
+| Deep Analysis – Cloud | 299 SEK/month | `--deep` via Claude API; code fragments only |
+| Deep Analysis – Local (scd-ai) | 299 SEK/month | `--deep` via local model; no code leaves network |
+| Compliance Pack | 499 SEK/month | NIS2 report, disclosure register, SDLC evidence |
+| Rule Packs | from 299 SEK/month | PCI-DSS, HIPAA, advanced JS, CRA-specific rules |
+| Training Add-on | 999 SEK/month | e-learning linked to team knowledge gaps |
+| Partner Add-on | 3 500 SEK/month | 4h/month consulting, dedicated contact, SLA |
 
 The product findings create a natural upsell funnel to Activemind's consulting engagements.
+See PRICING.md for full pricing detail and open decisions.
 
 ## Three-tier deployment architecture
 
 ```
-Maximum Privacy    – Everything local, zero external calls
-Balanced           – Default. Deep analysis via Claude API (code fragments only)
-Maximum Analysis   – Full Claude API integration, maximum findings
+maximum_privacy   – Everything local. scd-ai (local model) only. External API calls blocked.
+balanced          – Default. Local model preferred; Claude API available as explicit opt-in.
+maximum_analysis  – Claude API (cloud). Maximum findings, code fragments sent externally.
 ```
 
 Controlled by `trust_level` in `securityagent.yml` (placed in customer's repo root).
@@ -34,18 +47,27 @@ Controlled by `trust_level` in `securityagent.yml` (placed in customer's repo ro
 ```
 Developer machine
   scd CLI  ──────────────────────────────────────┐
-  ~/.scd/                                         │ push queue
+  ~/.scd/                                         │ push queue + deep analyze
     push-queue.jsonl                               │ (offline-first)
     repos/{repoId}/                               ▼
       audit.log                           scd-server
       scans/                              (customer infrastructure)
-      reports/                              data/scd.db
+      reports/                              data/scd.db       ← app data
+                                            data/scd-kb.db    ← KB embeddings
                                             /api/v1/events/batch
+                                            /api/v1/deep/analyze  ← scd-ai
+                                            /api/v1/ai/health
                                             /admin
                                             /dashboard
                                             /dashboard/rule/:id
                                             /dashboard/repo/:id
                                             /dashboard/installation/:id
+                                                    │
+                                                    │ Ollama HTTP API
+                                                    ▼
+                                            Ollama (customer infrastructure)
+                                              qwen2.5-coder:14b
+                                              nomic-embed-text
 ```
 
 ## Global store architecture (scd CLI)
@@ -184,3 +206,43 @@ scd-server startup
 
 - Rule signing planned for Fas 3 (Activemind-signed vs community)
 - Binary distribution with checksums planned before first customer
+
+## scd-ai — Local AI analysis layer
+
+scd-ai is the commercial add-on that enables fully local AI-powered deep
+analysis. It runs inside scd-server — no separate process or binary.
+
+**Core principle:** The CLI is a transport layer. All AI logic lives in scd-server.
+The CLI sends findings to `/api/v1/deep/analyze` and receives structured results.
+It has no direct knowledge of Ollama or which provider is active.
+
+```
+scd scan --deep
+    │
+    POST /api/v1/deep/analyze
+    ▼
+scd-server: lib/ai-engine.js
+    ├── Layer 1 KB: rule-specific guidance (deterministic, ruleId lookup)
+    ├── Layer 2 KB: semantic context (sqlite-vec, nomic-embed-text embeddings)
+    ├── Live context: scd.db repo history, exceptions, OWASP trends
+    └── Ollama API → local model → structured JSON
+    ▼
+deep_results stored in scd.db
+deep_source tagged on every result (provider, model, code_left_environment)
+```
+
+**deep_source audit trail:** Every finding carries provenance metadata including
+`code_left_environment: false` for local analysis. This supports CRA/NIS2
+compliance documentation — customers can prove, per finding, that code stayed local.
+
+**Open source boundary:** `--deep` is present in the CLI as a discoverable
+teaser. Without scd-server + scd-ai entitlement, it prints a subscription
+prompt and exits. No AI functionality runs in the open source tier.
+
+**Database separation:**
+- `data/scd.db` — application data (unchanged schema + new `deep_results`, `ai_config` tables)
+- `data/scd-kb.db` — KB embeddings only (sqlite-vec); contains no customer code;
+  replaceable with Postgres/pgvector without touching application data
+
+For full scd-ai architecture, see **ARCHITECTURE-AI.md**.
+For file-level reference, see **CODEBASE-AI.md**.

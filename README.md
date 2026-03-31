@@ -17,7 +17,7 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 - **Compact terminal output** – summary + top issues + most affected files (use `--verbose` for full detail)
 - **HTML, Markdown and JSON reports** with fix guidance for each finding
 - **Deep analysis** – optional Claude API integration; sends only the triggering code line + 8 lines of context, never whole files
-- **Per-scan storage** – every scan saved individually, never overwritten; regenerate reports from any historical scan
+- **Per-scan storage** – every scan saved with a unique random ID (`s-a3f9b2c1`), never overwritten; regenerate reports from any historical scan
 - **Exception management** – reviewed exceptions tracked in config, never as code comments
 - **Exception sync** – pull team-lead approvals from scd-server, sync rejected back with reason
 - **Audit trail** – append-only scan history per repository
@@ -154,14 +154,14 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 
 | Language / Category | Rules | CRITICAL | HIGH | EXPOSURE |
 |---|---|---|---|---|
-| JavaScript / TypeScript | 29 | 7 | 10 | 12 |
-| Python | 26 | 12 | 10 | 4 |
+| JavaScript / TypeScript | 32 | 7 | 13 | 12 |
+| Python | 31 | 12 | 15 | 4 |
 | PHP | 29 | 13 | 11 | 4 |
 | ASP.NET markup | 17 | 3 | 11 | – |
 | ASP.NET C# | 26 | 15 | 11 | – |
 | Sensitive files | 50 | 14 | 10 | 1 |
 | Infrastructure leakage | 21 | – | 3 | 18 |
-| **Total** | **172** | **63** | **69** | **30** |
+| **Total** | **180** | **63** | **77** | **30** |
 
 Covers OWASP Top 10 categories including Injection, Broken Access Control, Cryptographic Failures, Security Misconfiguration, and more.
 
@@ -194,6 +194,17 @@ All scan data, configs and reports are stored outside your repository:
         ├── scans/            ← one JSON per scan, never overwritten
         └── reports/          ← generated HTML/MD/JSON reports
 ```
+
+### Scan storage
+
+Every scan is saved with a unique random ID (`s-a3f9b2c1`). This ID is timezone-neutral and is also used as `session_id` on the server for full traceability.
+
+```bash
+scd store --scans                  # list all saved scans
+scd report --scan s-a3f9b2c1       # regenerate report from a specific scan
+```
+
+Deep analysis results are stored alongside findings — running a new scan without `--deep` never loses previous deep data.
 
 ### Scan output modes
 
@@ -298,7 +309,7 @@ scd export-findings                          # all findings
 scd export-findings --deep-only              # only findings with deep analysis
 scd export-findings --severity critical      # filter by severity
 scd export-findings --rule PHP-INJ-001       # filter by rule
-scd export-findings --scan 2026-03-17T132421 # from specific scan
+scd export-findings --scan s-a3f9b2c1        # from specific scan
 scd export-findings --output /tmp/review.json
 ```
 

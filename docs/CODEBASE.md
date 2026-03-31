@@ -16,7 +16,7 @@ bin/scd.js                  ← CLI entry point. All scd commands defined here.
 | `scanner-full.js` | Full OWASP scan. Loads all rule modules, applies vendor/minified/build-tool filters, runs antipattern checks with lookbehind support. |
 | `scanner-secrets.js` | Fast secrets-only scan. Used by pre-commit hook. |
 | `scanner-manual.js` | Manual scan mode. Exports `discoverFiles(target, opts)` and `isVendorPath(filePath)`. Supports `--include-vendor` and `--vendor-only` opts. |
-| `deep-analyzer.js` | Sends findings to Claude API. Sends only: filename + rule ID + triggering line + 8 lines context. Respects `trust_level`. |
+| `deep-analyzer.js` | Deep analysis client. Routes findings to scd-server `/api/v1/deep/analyze`. No direct AI provider knowledge — server decides provider. Merges returned results into scan output. Respects `trust_level` (refuses if maximum_privacy and no local provider configured). |
 
 #### Rules
 | File | Rules | Coverage |
@@ -45,7 +45,7 @@ bin/scd.js                  ← CLI entry point. All scd commands defined here.
 |---|---|
 | `store.js` | Central path management. `getRepoId()`, `getRepoIdentity()`, `updateMeta()`, all store paths. |
 | `store-verify.js` | Verify repos against disk. Statuses: OK/MISSING/STALE/ORPHAN. Windows-compatible. |
-| `scan-cache.js` | Per-scan storage. `saveCache()`, `loadCache()`, `loadScan()`. |
+| `scan-cache.js` | Per-scan storage. `makeScanId()` generates `s-XXXXXXXX`. `saveCache(repoRoot, data, scanId?)`, `loadCache()`, `loadScan()`. |
 | `config.js` | Reads `config.yml` from store. Handles `trust_level`, `deep_delay_ms`, exceptions. |
 | `global-config.js` | Manages `~/.scd/config`. API key, central URL, token. |
 
@@ -61,7 +61,7 @@ bin/scd.js                  ← CLI entry point. All scd commands defined here.
 | `report-index.js` | HTTP server index page. |
 | `report-markdown.js` | Markdown report. |
 | `report-json.js` | JSON report. |
-| `audit.js` | Writes to `audit.log` (JSONL). Calls `enqueue()` with category + top_rules breakdown. |
+| `audit.js` | Writes to `audit.log` (JSONL). `logScan()` accepts `scanId` param — uses it as `session_id` in audit.log and push-queue (same ID as CLI scan file). |
 | `export-findings.js` | Exports findings to JSON. Default: all findings. `deepOnly: true` for deep-analysis-only. |
 
 #### CLI support
@@ -93,7 +93,7 @@ server.js                   ← Express app, startup, route registration.
 | File | Responsibility |
 |---|---|
 | `server-config.js` | Config hierarchy: ENV → `config.yml` → defaults. Fields: host, port, log_level, session_ttl_hours, jwt_secret, public_key_path, license_path, db_path. |
-| `db.js` | SQLite via `better-sqlite3`. Tables: installations, repos, scans, scan_categories, scan_top_rules, raw_events, server_config, sessions, users. Drill-down: `getRuleDetail`, `getRepoDetail`, `getInstallationDetail`. |
+| `db.js` | SQLite via `better-sqlite3`. Tables: installations, repos, scans, scan_categories, scan_top_rules, raw_events, server_config, sessions, users, exceptions, deep_results, ai_config. Drill-down: `getRuleDetail`, `getRepoDetail`, `getInstallationDetail`. |
 | `auth.js` | License validation (Ed25519 + machine fingerprint), Bearer token auth, `requireFeature()` middleware. |
 | `session-auth.js` | JWT sign/verify (HS256), httpOnly cookie, in-memory rate limiter, `requireAuth`/`requireAdmin`/`requireDashboard` middleware. |
 | `admin-auth.js` | User account management, scrypt password hashing, `ensureAdminExists()`, `renderErrorPage()`. |
@@ -104,29 +104,47 @@ server.js                   ← Express app, startup, route registration.
 | `routes-admin.js` | `/admin` UI + API. Admin role only. Status, installations, scans, users, change-password. |
 | `routes-dashboard.js` | `/dashboard` UI + API. Admin + viewer. Stat cards, trend, knowledge gaps, top rules, recent scans, repos. |
 | `routes-detail.js` | Drill-down detail pages. Rule/repo/installation views with trend charts and cross-navigation. |
+| `routes-ai.js` | `POST /api/v1/deep/analyze` (Bearer), `GET /api/v1/ai/health` (JWT), `POST /admin/api/ai/index-kb` (JWT admin). See CODEBASE-AI.md. |
 
 ### Database schema
 
 ```sql
 installations   id (fingerprint), hostname, platform, scd_version, first/last_seen
 repos           id (repoId), name, remote, first/last_seen
-scans           session_id, installation_id, repo_id, hook, findings by severity, ts
+scans           session_id (s-XXXXXXXX format, same as CLI scan file ID), installation_id, repo_id, hook, findings by severity, ts
 scan_categories scan_id → category, critical, high, medium, exposure counts
 scan_top_rules  scan_id → rule_id, rule_name, severity, count
 raw_events      received_at, payload (JSON verbatim)
 server_config   key/value (api_token, machine_fingerprint, jwt_secret)
 sessions        jti, user_id, username, role, created_at, expires_at, invalidated
 users           username, password_hash, salt, role, created_at, last_login
+exceptions      id, repo_id, rule_id, file, line, type, status, reason, tag, db_id, ...
+deep_results    scan_id, repo_id, rule_id, file, line, confirmed, confidence,
+                false_positive_reason, attack_scenario, fix_code, fix_explanation,
+                teaching_explanation, prevention_tips, verification_steps,
+                kb_sources, deep_source (JSON), analyzed_at
+ai_config       key/value (ollama_url, model, embed_model, provider, kb_indexed_at, ...)
+```
+
+**scd-kb.db** (separate file — KB embeddings only, no customer data):
+```sql
+kb_documents    id, layer (1|2), category, rule_id, path, content, created_at
+kb_vectors      rowid → kb_documents.id, embedding float[768]  (sqlite-vec)
 ```
 
 ### Configuration
 ```
-config.yml          ← gitignored, active configuration
+config.yml          ← gitignored, active configuration (includes ai: section)
 config.example.yml  ← committed template
 data/scd.db         ← SQLite database (gitignored)
+data/scd-kb.db      ← KB embeddings (gitignored; rebuild with index-kb)
 data/scd-public.pem ← Ed25519 public key (gitignored)
 data/license.key    ← Signed license file (gitignored)
 ```
+
+For AI-specific modules (`ai-engine.js`, `ai-kb.js`, `ai-kb-store.js`,
+`ai-providers/`, `ai-live-context.js`, `routes-ai.js`) and the `lib/ai-kb/`
+knowledge base directory, see **CODEBASE-AI.md**.
 
 ---
 
