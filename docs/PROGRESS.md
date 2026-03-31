@@ -1,6 +1,6 @@
 # Secure Code by Design – Progress & Roadmap
 
-_Last updated: 2026-03-30_
+_Last updated: 2026-03-31_
 
 ## Status: v0.5.3 – Insights page + Scan ID refactor + Store UX
 
@@ -109,10 +109,7 @@ Installed and verified working on:
 - ✅ Four tabs, inline modals, ID column (#12), tag chip, type pill
 
 ### scd-server — Reports (`/reports`)
-- ✅ CRA Compliance Report — seven sections, Chart.js trend, print CSS, cover page
-- ✅ Section: Developer Coverage & Knowledge Gaps (CRA Annex I Part I §2, Annex II §2, NIS2 Art. 21 §2(b))
-  - Scanning coverage table per developer machine (active/inactive status)
-  - Team knowledge gaps with training recommendations per OWASP category
+- ✅ CRA Compliance Report — six sections, Chart.js trend, print CSS, cover page
 - ✅ Reports index with coming reports listed
 
 ### scd-server — Data pages (`/data/*`)
@@ -124,16 +121,15 @@ Installed and verified working on:
 - ✅ Modal: 720px wide, 2-column metadata grid (grid2col helper)
 - ✅ "Data ▾" dropdown in navbar
 
-### scd-server — Insights (`/insights`)
+### scd-server — Insights (`/insights`) — new 2026-03-30
 - ✅ Own navbar entry — visible to all roles
-- ✅ Filters: period (30/90/180/365 days), repository, developer (was: installation)
+- ✅ Filters: period (30/90/180/365 days), repository, installation
 - ✅ Six stat cards: total scans, active repos, active developers, clean scan rate, total critical, blocked
 - ✅ Finding Trend — stacked bar chart (Chart.js) per week, Critical/High/Medium
 - ✅ Knowledge Gaps — OWASP categories as horizontal bars, dominant gap CTA ("Consider workshop")
 - ✅ Most Triggered Rules — top 8 rules with bars, clickable links to drill-down
 - ✅ Scanning Activity — repos with color dot (green/yellow/red by recency), stale warning
 - ✅ Risk Decisions — most accepted exceptions, flags rules with 5+ accepted exceptions
-- ✅ Developer Breakdown — per-developer table: scans, clean rate, critical/high, top OWASP gap, last scan
 - ✅ All sections update on filter change, chart rebuilt without flicker
 
 ### scd-server — Drill-down detail pages (Nivå 1)
@@ -144,8 +140,7 @@ Tables: `installations`, `repos`, `scans`, `scan_categories`, `scan_top_rules`,
 `raw_events`, `server_config`, `sessions`, `users`, `exceptions`
 
 New db queries: `getInsightsSummary`, `getInsightsScanActivity`,
-`getInsightsExceptionRate`, `getInsightsTrend`,
-`getInsightsDeveloperSummary`, `getInsightsDeveloperGaps`
+`getInsightsExceptionRate`, `getInsightsTrend`
 
 ---
 
@@ -221,7 +216,6 @@ New db queries: `getInsightsSummary`, `getInsightsScanActivity`,
 - **taintAware rules**: must not fall through when no varName extracted
 - **Dedup**: Pass 1 ruleId:file:line (taintSource wins), Pass 2 file:line (higher severity wins)
 - **Scan ID**: s-XXXXXXXX format — random, timezone-free, same ID in CLI file + server session_id
-- **UI terminology**: "installation" is internal/technical. In all user-facing UI use "developer" or "developer machine". URLs and DB schema unchanged.
 
 ### Exception flow design notes
 - `updateExceptionStatus` uses line-by-line YAML parsing
@@ -236,3 +230,77 @@ At the end of each work session:
 1. Ask Claude to generate an updated `PROGRESS.md`
 2. Copy into `docs/PROGRESS.md` in repo, commit and push
 3. Replace the file in Claude Project Knowledge (delete old, upload new)
+
+---
+
+## scd-ai — Local AI layer (new track, 2026-03-31)
+
+### Active development track — separate from scd CLI / scd-server track
+
+**Chat:** scd-ai session
+**Branch:** `feature/scd-ai` in scd-server repo
+
+### Architecture decisions (completed 2026-03-31)
+
+- ✅ scd-ai is a **commercial add-on** — Deep Analysis Pack (local variant)
+- ✅ All AI logic lives in scd-server — CLI is a transport layer only
+- ✅ `--deep` in CLI becomes a teaser: prints subscription prompt if no scd-server + entitlement
+- ✅ Provider: Ollama (MIT license) — HTTP API only, no SDK dependency
+- ✅ Recommended model: `qwen2.5-coder:14b` (Apache 2.0, 16GB RAM)
+- ✅ Minimum model: `qwen2.5-coder:7b` (Apache 2.0, 8GB RAM)
+- ✅ Embedding model: `nomic-embed-text` (Apache 2.0)
+- ✅ KB two-layer design: Layer 1 deterministic (ruleId lookup), Layer 2 semantic (sqlite-vec)
+- ✅ Database separation: `scd.db` (app data) + `scd-kb.db` (KB embeddings only)
+- ✅ `deep_source` on every result: `provider`, `model`, `code_left_environment`, `analyzed_at`
+- ✅ trust_level scale: `maximum_privacy` → local only, `balanced` → local preferred, `maximum_analysis` → cloud
+- ✅ Architecture documented in `ARCHITECTURE-AI.md` + `CODEBASE-AI.md`
+- ✅ `ARCHITECTURE.md` + `CODEBASE.md` updated with scd-ai sections
+
+### PoC completed (2026-03-31)
+
+- ✅ `lib/ai-providers/local.js` — Ollama HTTP client (generate, embed, checkHealth)
+- ✅ `lib/ai-engine.js` — orchestrator: prompt assembly, Pass 1 + Pass 2, deep_source tagging
+- ✅ `lib/routes-ai.js` — POST /api/v1/deep/analyze + GET /api/v1/ai/health
+- ✅ `db.js` — deep_results + ai_config tables added (additive, no FK on repo_id)
+- ✅ `server.js` — routes-ai registered (on feature/scd-ai only)
+- ✅ `config.example.yml` — ai: block added
+- ✅ `lib/server-config.js` — parseYaml extended to handle nested blocks (ai:)
+- ✅ End-to-end chain verified: CLI → scd-server → ai-engine → provider → deep_source tagged
+- ✅ Graceful error handling verified: provider unreachable returns well-formed JSON with _error field
+- ✅ Branch: `feature/scd-ai` pushed to GitHub
+
+### Verified against Ollama on office machine (2026-03-31)
+
+- ✅ Ollama reachable at `http://192.168.0.60:11434` from dev Mac
+- ✅ `qwen2.5-coder:7b` installed and responding (~5s for simple prompt locally)
+- ✅ `nomic-embed-text` installed (replaces embeddinggemma)
+- ✅ Full end-to-end analysis verified — PHP-INJ-002 finding returned:
+  - `confirmed: true`, `confidence: HIGH` — correct assessment
+  - Concrete attack scenario, correct PDO fix code, pedagogical explanation
+  - `deep_source.code_left_environment: false`, `pass: pass1`
+- ✅ Structured JSON output parses correctly without KB
+- ✅ `timeout_ms: 300000` required for 8GB RAM machine with 7b model
+
+### Bugfixes applied (2026-03-31)
+
+- ✅ `server-config.js` parseYaml — nested YAML blocks (ai:) were silently ignored
+- ✅ `ai_endpoint` replaces `ollama_url` — provider-agnostic naming
+- ✅ `deep_results` — FK on repo_id removed (deep analysis may run before first scan event syncs)
+- ✅ `routes-ai.js` auth imports — `requireBearer` from `auth.js`, `requireDashboard` from `session-auth.js`
+- ✅ `server.js` on main — routes-ai registration removed (belongs on feature/scd-ai only)
+
+### Next steps (scd-ai session)
+
+- KB Layer 1: create first rule JSON files in `lib/ai-kb/rules/` (start: PHP-INJ-002, INJ-001, PY-INJ-001)
+- KB Layer 2: create OWASP and framework markdown files
+- `lib/ai-kb.js` — KB access layer
+- `lib/ai-kb-store.js` — sqlite-vec abstraction
+- Integrate KB context into `ai-engine.js` prompts
+- Compare output quality with vs without KB on same finding
+
+### Pending — CLI refactor (coordinate with scd – session 2)
+
+- `lib/deep-analyzer.js` — refactor to route via scd-server instead of Anthropic API directly
+- `bin/scd.js` — store deep_source in audit.log + saveCache()
+- Teaser message when no server configured or entitlement missing
+- **Note:** CLI can be refactored in parallel with KB development. Required before full end-to-end `scd scan --deep` test.

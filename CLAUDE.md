@@ -150,11 +150,24 @@ Self-hosted by design, not as a limitation.
 3. Recurring revenue from commercial licenses (Team/Professional tiers)
 
 ### License tiers
+
 | Tier | Price | Key differentiator |
 |---|---|---|
 | Starter | Free / Open Source | Full CLI + all core rules, local reports |
-| Team | 2 499 SEK/month | Local scd-server, team dashboard, up to 5 developers |
-| Professional | 7 499 SEK/month | CRA/NIS2 reports, commercial rule packs, quarterly reviews |
+| Team | 499 SEK/mo fixed + 149 SEK/active dev | Local scd-server, team dashboard, CRA Compliance Report |
+| Professional | 999 SEK/mo fixed + 249 SEK/active dev | NIS2 reports, commercial rule packs, quarterly reviews |
+
+_Active developer = committed code to a monitored repo within the last 90 days. Tracked via unique installationId with activity in scd-server._
+
+### Add-ons (available on any paid tier)
+
+| Add-on | Price | Description |
+|---|---|---|
+| Deep Analysis Pack | 299 SEK/mo | `scd scan --deep` for the whole team. Cloud (Claude API) or local (scd-ai via Ollama — nothing leaves your network) |
+| Compliance Pack | 499 SEK/mo | NIS2 report, Vulnerability Disclosure Register, Remediation Timeline, SDLC Security Evidence |
+| Rule Packs | from 299 SEK/mo | Fintech (PCI-DSS), healthcare (HIPAA/GDPR), advanced JS/TS, CRA-specific. Bundle of 3: 699 SEK/mo. Included in Professional |
+| Training Add-on | 999 SEK/mo | e-learning linked to team knowledge gaps. Launch as workshops until content is ready |
+| Partner Add-on | 3 500 SEK/mo | 4h consulting/mo, dedicated contact, SLA, annual security review |
 
 ### scd-server routes
 | Route | Auth | Purpose |
