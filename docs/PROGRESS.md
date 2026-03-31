@@ -1,6 +1,6 @@
 # Secure Code by Design – Progress & Roadmap
 
-_Last updated: 2026-03-30_
+_Last updated: 2026-03-31_
 
 ## Status: v0.5.3 – Insights page + Scan ID refactor + Store UX
 
@@ -230,3 +230,60 @@ At the end of each work session:
 1. Ask Claude to generate an updated `PROGRESS.md`
 2. Copy into `docs/PROGRESS.md` in repo, commit and push
 3. Replace the file in Claude Project Knowledge (delete old, upload new)
+
+---
+
+## scd-ai — Local AI layer (new track, 2026-03-31)
+
+### Active development track — separate from scd CLI / scd-server track
+
+**Chat:** scd-ai session
+**Branch:** `feature/scd-ai` in scd-server repo
+
+### Architecture decisions (completed 2026-03-31)
+
+- ✅ scd-ai is a **commercial add-on** — Deep Analysis Pack (local variant)
+- ✅ All AI logic lives in scd-server — CLI is a transport layer only
+- ✅ `--deep` in CLI becomes a teaser: prints subscription prompt if no scd-server + entitlement
+- ✅ Provider: Ollama (MIT license) — HTTP API only, no SDK dependency
+- ✅ Recommended model: `qwen2.5-coder:14b` (Apache 2.0, 16GB RAM)
+- ✅ Minimum model: `qwen2.5-coder:7b` (Apache 2.0, 8GB RAM)
+- ✅ Embedding model: `nomic-embed-text` (Apache 2.0)
+- ✅ KB two-layer design: Layer 1 deterministic (ruleId lookup), Layer 2 semantic (sqlite-vec)
+- ✅ Database separation: `scd.db` (app data) + `scd-kb.db` (KB embeddings only)
+- ✅ `deep_source` on every result: `provider`, `model`, `code_left_environment`, `analyzed_at`
+- ✅ trust_level scale: `maximum_privacy` → local only, `balanced` → local preferred, `maximum_analysis` → cloud
+- ✅ Architecture documented in `ARCHITECTURE-AI.md` + `CODEBASE-AI.md`
+- ✅ `ARCHITECTURE.md` + `CODEBASE.md` updated with scd-ai sections
+
+### PoC completed (2026-03-31)
+
+- ✅ `lib/ai-providers/local.js` — Ollama HTTP client (generate, embed, checkHealth)
+- ✅ `lib/ai-engine.js` — orchestrator: prompt assembly, Pass 1 + Pass 2, deep_source tagging
+- ✅ `lib/routes-ai.js` — POST /api/v1/deep/analyze + GET /api/v1/ai/health
+- ✅ `db.js` — deep_results + ai_config tables added (additive)
+- ✅ `server.js` — routes-ai registered
+- ✅ `config.example.yml` — ai: block added
+- ✅ End-to-end chain verified: CLI → scd-server → ai-engine → provider → deep_source tagged
+- ✅ Graceful error handling verified: provider unreachable returns well-formed JSON with _error field
+- ✅ Branch: `feature/scd-ai` pushed to GitHub
+
+### Pending — to test when Ollama available
+
+- ⏳ Full end-to-end test with `qwen2.5-coder:7b` on office machine
+- ⏳ Verify structured JSON output quality from local model
+- ⏳ Verify `saveDeepResults()` writes correctly to scd.db
+
+### Next steps (scd-ai session)
+
+- KB Layer 1: create first rule JSON files in `lib/ai-kb/rules/` (start: PHP-INJ-002, INJ-001, PY-INJ-001)
+- KB Layer 2: create OWASP and framework markdown files
+- `lib/ai-kb.js` — KB access layer
+- `lib/ai-kb-store.js` — sqlite-vec abstraction (after Ollama test confirms embedding model works)
+
+### Pending — CLI refactor (coordinate with scd – session 2)
+
+- `lib/deep-analyzer.js` — refactor to route via scd-server instead of Anthropic API directly
+- `bin/scd.js` — store deep_source in audit.log + saveCache()
+- Teaser message when no server configured or entitlement missing
+- **Note:** CLI can be refactored in parallel with KB development. Required before full end-to-end `scd scan --deep` test.
