@@ -10,13 +10,13 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 
 ## Features
 
-- **172 security rules** across JavaScript, TypeScript, Python, PHP, ASP.NET, and more
+- **174 security rules** across JavaScript, TypeScript, Python, PHP, ASP.NET, and more
 - **Taint analysis** — tracks user-controlled variables from HTTP input to dangerous sinks
 - **Git hooks** – secrets scanning on pre-commit, full OWASP scan on pre-push
 - **Zero repo footprint** – no files written to your repository after init
 - **Compact terminal output** – summary + top issues + most affected files (use `--verbose` for full detail)
 - **HTML, Markdown and JSON reports** with fix guidance for each finding
-- **Deep analysis** – optional Claude API integration; sends only the triggering code line + 8 lines of context, never whole files
+- **Deep analysis** – optional AI-powered analysis via scd-server; requires the Deep Analysis Pack
 - **Per-scan storage** – every scan saved with a unique random ID (`s-a3f9b2c1`), never overwritten; regenerate reports from any historical scan
 - **Exception management** – reviewed exceptions tracked in config, never as code comments
 - **Exception sync** – pull team-lead approvals from scd-server, sync rejected back with reason
@@ -88,10 +88,9 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 |---|---|
 | `scd scan [target]` | Run a full security scan (compact output by default) |
 | `scd scan --verbose` | Full file-grouped + rule-grouped output |
-| `scd scan --deep` | Scan with Claude API deep analysis |
+| `scd scan --deep` | Deep analysis via scd-server (requires Deep Analysis Pack) |
 | `scd scan --include-vendor` | Include vendor/dependency code in scan |
 | `scd scan --vendor-only` | Scan only vendor/dependency code (supply chain) |
-| `scd scan --deep --deep-delay <ms>` | Add delay between API calls (rate limit prevention) |
 
 ### Reports
 
@@ -143,7 +142,6 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 | Command | Description |
 |---|---|
 | `scd init` | Register repo and install git hooks |
-| `scd configure --api-key` | Set Claude API key for deep analysis |
 | `scd configure --central-url <url>` | Set scd-server URL for team sync |
 | `scd version` | Detailed version info |
 | `scd doctor` | Verify installation and configuration |
@@ -154,14 +152,14 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 
 | Language / Category | Rules | CRITICAL | HIGH | EXPOSURE |
 |---|---|---|---|---|
-| JavaScript / TypeScript | 32 | 7 | 13 | 12 |
-| Python | 31 | 12 | 15 | 4 |
-| PHP | 29 | 13 | 11 | 4 |
-| ASP.NET markup | 17 | 3 | 11 | – |
-| ASP.NET C# | 26 | 15 | 11 | – |
-| Sensitive files | 50 | 14 | 10 | 1 |
-| Infrastructure leakage | 21 | – | 3 | 18 |
-| **Total** | **180** | **63** | **77** | **30** |
+| JavaScript / TypeScript | 25 | 7 | 13 | – |
+| Python | 27 | 12 | 11 | 4 |
+| PHP | 28 | 12 | 11 | 4 |
+| ASP.NET markup | 17 | – | – | – |
+| ASP.NET C# | 26 | – | – | – |
+| Sensitive files | 30 | 14 | 10 | 5 |
+| Infrastructure leakage | 21 | – | 4 | 17 |
+| **Total** | **174** | **63** | **71** | **30** |
 
 Covers OWASP Top 10 categories including Injection, Broken Access Control, Cryptographic Failures, Security Misconfiguration, and more.
 
@@ -184,7 +182,7 @@ All scan data, configs and reports are stored outside your repository:
 
 ```
 ~/.scd/
-├── config                    ← API key, central URL, token
+├── config                    ← central URL, token
 └── repos/
     └── {repoId}/
         ├── meta.json         ← repo identity, last scan, sync timestamps
@@ -204,7 +202,6 @@ scd store --scans                  # list all saved scans
 scd report --scan s-a3f9b2c1       # regenerate report from a specific scan
 ```
 
-Deep analysis results are stored alongside findings — running a new scan without `--deep` never loses previous deep data.
 
 ### Scan output modes
 
@@ -243,14 +240,16 @@ Supports PHP, Python, and JavaScript/TypeScript. Set `scan_mode: fast` in config
 
 ### Deep analysis
 
-`scd scan --deep` sends findings to Claude API for AI-powered analysis. What is sent per finding:
+`scd scan --deep` sends CRITICAL and HIGH findings to scd-server for AI-powered analysis. What is sent per finding:
 
 - The filename
 - Rule ID, name, severity, line number
 - The exact code line that triggered the rule
 - 8 lines of surrounding context
 
-**Whole files are never sent.** Set `trust_level: maximum_privacy` in `securityagent.yml` to disable all external API calls entirely.
+**Whole files are never sent.** Deep analysis requires scd-server with the Deep Analysis Pack. See [securecodebydesign.com](https://securecodebydesign.com) for subscription options.
+
+Set `trust_level: maximum_privacy` in `securityagent.yml` to disable all external API calls entirely.
 
 ### Exception management
 
@@ -292,7 +291,7 @@ Place `securityagent.yml` in your project root to configure scanning behaviour:
 
 ```yaml
 trust_level: balanced        # maximum_privacy | balanced | maximum_analysis
-deep_delay_ms: 0             # ms delay between --deep API calls
+deep_delay_ms: 0             # ms delay between --deep requests
 block_on_critical: true
 block_on_high: true
 scan_mode: full              # full (with taint analysis) | fast (regex only)
@@ -336,7 +335,7 @@ lib/
   rule-registry.js        ← Normalised catalogue of all rules
   config.js               ← Config loading, isExcepted(), getRuleAction()
   exception-manager.js    ← Exception/ignore create, sync, resolve
-  deep-analyzer.js        ← Claude API deep analysis
+  deep-analyzer.js        ← Deep analysis via scd-server
   output-terminal.js      ← Compact + verbose terminal output
   report-html.js          ← HTML report generator
   report-markdown.js      ← Markdown report generator
@@ -354,7 +353,7 @@ docs/
 ## Roadmap
 
 - `scd deps` – Dependency scanning with CVE lookup via OSV API
-- Python + JS taint analysis (PHP complete)
+- `scd deps` – Dependency scanning with CVE lookup via OSV API
 - `pkg` binary distribution — no Node.js required at customer site
 - VS Code extension
 - `scd uninstall` – clean removal with store data options
