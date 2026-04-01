@@ -2,7 +2,7 @@
 
 _Last updated: 2026-03-31_
 
-## Status: v0.5.3 – Insights page + Scan ID refactor + Store UX
+## Status: v0.6.0 (scd CLI) / v0.7.0 (scd-server)
 
 **scd CLI** lives at `~/Projects/scd`
 `git@github.com:activemindsolutions/scd.git` (main branch, public)
@@ -13,10 +13,6 @@ _Last updated: 2026-03-31_
 **scd-admin** lives at `~/Projects/scd-admin`
 Internal tools: `generate-license.js`, keypair management (not in any repo)
 
-Installed and verified working on:
-- macOS (primary dev machine, `npm link`)
-- Ubuntu (secondary machine, `git clone` + `npm link`)
-
 ---
 
 ## Completed
@@ -25,202 +21,168 @@ Installed and verified working on:
 - ✅ `scd init` – register repo, install git hooks via `core.hooksPath`
 - ✅ `scd scan [target]` – full OWASP scan with all flags
 - ✅ `scd scan --deep` – Claude API deep analysis (CRITICAL/HIGH only)
-- ✅ `scd scan --verbose` – full file-grouped + rule-grouped output (default: compact)
-- ✅ `scd scan --include-vendor` – include vendor/dependency code in scan
-- ✅ `scd scan --vendor-only` – scan only vendor/dependency code (supply chain audit)
+- ✅ `scd scan --verbose` – full file-grouped + rule-grouped output
+- ✅ `scd scan --include-vendor` / `--vendor-only` – vendor code scanning
+- ✅ `scd scan --no-sync` – skip push to scd-server for this scan (audit log kept locally)
+- ✅ `scd scan --no-audit` – skip audit logging entirely
 - ✅ `scd report` – generate HTML/MD/JSON from latest scan
-- ✅ `scd export-findings` – export all findings to JSON (default: all findings)
-- ✅ `scd export-findings --deep-only` – export only findings with deep analysis
-- ✅ `scd approve --reason <text>` – create accepted-risk exception (pending team-lead approval)
-- ✅ `scd ignore --reason <text> [--tag <text>]` – general-purpose ignore with optional free-text tag
-- ✅ `scd sync` – pull approved/rejected exceptions from scd-server, write to config.yml
-- ✅ `scd exceptions [--list pending|approved|rejected|all]` – list local exceptions
-- ✅ `scd resolve --rejected <id>` – remove rejected exception from config, notify server
-- ✅ `scd audit` – view audit trail
-- ✅ `scd doctor` – verify setup + push queue status
-- ✅ `scd configure` – API key, central URL, token management
-- ✅ `scd insights [--deep]` – behavioral analysis from audit log
-- ✅ `scd list / store / rules / version` – store and rule navigation
+- ✅ `scd export-findings` – export findings to JSON with filters
+- ✅ `scd approve` / `scd ignore` – exception management
+- ✅ `scd sync` – pull approved/rejected exceptions from scd-server
+- ✅ `scd exceptions` / `scd resolve` – exception lifecycle
+- ✅ `scd audit` / `scd insights` – local analysis
+- ✅ `scd store` / `scd rules` / `scd doctor` / `scd version` – navigation
 
-### Scan ID refactor (2026-03-30)
-- ✅ `makeScanId()` generates `s-{8 hex chars}` e.g. `s-a3f9b2c1`
-- ✅ Not date/time-based — avoids timezone confusion entirely
-- ✅ Actual timestamp lives in `scanDate` field inside the scan file
+### Scan ID refactor
+- ✅ `makeScanId()` generates `s-{8 hex chars}` — not date/time-based
 - ✅ Same ID used as `session_id` on server — full CLI↔server traceability
-- ✅ `logScan()` accepts `scanId` parameter, uses it as `session_id` in audit.log + push
-- ✅ `saveCache()` accepts optional `scanId` parameter, returns ID used
-- ✅ Single `scanId` created per scan in `bin/scd.js`, passed to both `logScan` and `saveCache`
+- ✅ `logScan()` accepts `scanId` + `noSync` parameters
+- ✅ `saveCache()` accepts optional `scanId` parameter
 
-### Store UX improvements (2026-03-30)
-- ✅ `scd store --scans` — shows working directory, store ID, scans path on "no scans" error
-- ✅ `scd store --scans` — column headers: "Scan ID" and "Date (local)" to clarify UTC vs local
-- ✅ `scd store --show` — working directory shown as first line always
-- ✅ `scd store --show` — shows working directory + store path on "not initialised" error
-- ✅ `scd store` (default) — working directory shown as first line
+### --no-sync flag
+- ✅ Skips `enqueue()` and all `tryFlush()` calls
+- ✅ audit.log still written — local traceability preserved
+- ✅ Terminal notice shown when active
+- ✅ Compatible with all other flags
 
-### Terminal output (2026-03-26)
-- ✅ **Compact mode** (default): Summary + Top issues (8 rules) + Most affected files (5)
-- ✅ **Verbose mode** (`--verbose`): full file-grouped + rule-grouped output
-- ✅ Progress bar, rejected-exception marking, sync notice
-
-### Exception flow – end-to-end (2026-03-26)
-- ✅ Full lifecycle: CLI → server → approval → sync → scan suppression → resolve
-- ✅ `scd ignore --tag <text>`, `scd sync`, `scd exceptions`, `scd resolve --rejected <id>`
+### Store UX improvements
+- ✅ Working directory shown in `scd store`, `--scans`, `--show`
+- ✅ Clear error messages with store path when uninitialised or no scans
+- ✅ Scan ID column header: "Scan ID" / "Date (local)"
 
 ### Rule coverage (180 rules total)
-- ✅ JavaScript/TypeScript – 32 rules (+3 taintAware, +1 unparameterized)
-- ✅ Python – 31 rules (+3 taintAware, +1 unparameterized)
-- ✅ PHP – 29 rules (+ taintAware variants)
-- ✅ ASP.NET markup (aspx/ascx) – 17 rules
-- ✅ ASP.NET C# code-behind – 26 rules
-- ✅ Sensitive files – 50 rules (includes EXPOSURE)
+- ✅ JavaScript/TypeScript – 32 rules
+- ✅ Python – 31 rules
+- ✅ PHP – 29 rules
+- ✅ ASP.NET markup – 17 rules
+- ✅ ASP.NET C# – 26 rules
+- ✅ Sensitive files – 50 rules
 - ✅ Infrastructure leakage – 21 rules
+- **Severity:** CRITICAL: 63, HIGH: 77, MEDIUM: 10, EXPOSURE: 30
 
-**Severity breakdown:** CRITICAL: 63, HIGH: 77, MEDIUM: 10, EXPOSURE: 30
+### Taint analysis — PHP, Python, JS/TS
+- ✅ Six taintAware rules for Python and JS/TS
+- ✅ Unparameterized query rules: PY-INJ-006, INJ-004
 
-### Taint analysis — Python and JS/TS (2026-03-27)
-- ✅ Six taintAware rules: PY-INJ-001, PY-INJ-002, PY-PATH-001, INJ-001, INJ-002, INJ-003
-- ✅ taintExtract strategies extended for Python/JS (no $ prefix)
-- ✅ HTML report: taint-source rendered inside code snippet box
-- ✅ Dedup: at file:line collision, higher severity wins
+### scd-server — Foundation
+- ✅ Express + SQLite, JWT session auth, Bearer token, Ed25519 license
 
-### Unparameterized query rules (2026-03-27)
-- ✅ PY-INJ-006 (HIGH) — cursor.execute() with .format(), + concat, reversed concat
-- ✅ INJ-004 (HIGH) — db/pool/knex.raw() with template literal or + concat
-- ✅ Inline negative lookahead — immune to nearby-code suppression
+### scd-server — Dashboard (`/dashboard`)
+- ✅ Stat cards, trend chart, knowledge gaps, top rules, recent scans
+- ✅ Scan ID column in Recent Scans — click opens detail modal
 
-### scd-server — Foundation + Auth
-- ✅ Express + SQLite, JWT session auth, rate limiting, Bearer token support
-- ✅ Ed25519 license validation, machine fingerprint binding
+### scd-server — Insights (`/insights`)
+- ✅ Own navbar entry, visible to all roles
+- ✅ Filters: period, repository, developer machine
+- ✅ Six stat cards, Finding Trend (Chart.js), Knowledge Gaps with CTA
+- ✅ Most Triggered Rules, Scanning Activity, Risk Decisions
+- ✅ Developer Breakdown — per-developer table with clean rate, top gap, last scan
 
-### scd-server — Admin UI (`/admin`)
-- ✅ Server status, license info, installations, scans, user management
+### scd-server — Reports (`/reports`)
+- ✅ CRA Compliance Report — seven sections, Chart.js trend, print CSS
+- ✅ Section 6: Developer Coverage & Knowledge Gaps
+  - Scanning coverage per developer machine (active/inactive status)
+  - Team knowledge gaps with training recommendations (NIS2 Art. 21 §2(b))
+  - CRA refs: Annex I Part I §2, Annex II §2
 
-### scd-server — Team Dashboard (`/dashboard`)
-- ✅ Stat cards, trend chart, knowledge gaps, top rules, recent scans, repos
-- ✅ Recent Scans: Scan ID column added, click opens detail modal
-- ✅ Navbar: Dashboard, Insights, Exceptions, Data ▾, Reports, Admin
+### scd-server — Data pages (`/data/*`)
+- ✅ Repositories, Developer machines, Rules, Scans
+- ✅ Client-side search, column sort, row count
+- ✅ Scan detail modal (720px, 2-column grid)
+- ✅ "Data ▾" dropdown in navbar
+- ✅ Status column (Active/Excluded) on repos and developer machines
+- ✅ Exclude toggle in list modals with role-based disabled state
+
+### scd-server — Exclude from statistics
+- ✅ `excluded_from_stats` column on both `installations` and `repos`
+- ✅ Migration runs automatically on startup
+- ✅ Toggle on detail pages (admin only) — disabled/greyed for other roles
+- ✅ Toggle in data list modals — same role-based behaviour
+- ✅ All insights queries filter excluded machines and repos
+- ✅ CRA report developer section filters excluded machines
+- ✅ Defense in depth: UI disables, backend (`requireAdmin`) protects
 
 ### scd-server — Exception approval flow
 - ✅ Full lifecycle: pending → approved | rejected → resolved
-- ✅ CLI push, dashboard approve/reject, CLI sync pull
 
-### scd-server — Exceptions page (`/dashboard/exceptions`)
-- ✅ Four tabs, inline modals, ID column (#12), tag chip, type pill
-
-### scd-server — Reports (`/reports`)
-- ✅ CRA Compliance Report — six sections, Chart.js trend, print CSS, cover page
-- ✅ Reports index with coming reports listed
-
-### scd-server — Data pages (`/data/*`)
-- ✅ Repositories, Installations, Rules, Scans
-- ✅ Client-side search, column sort, row count
-- ✅ Scans page: Scan ID as first column, clickable → detail modal
-- ✅ Scan detail modal: ID, repo, host, platform, scd version, hook, timestamp,
-  files, findings by severity, blocked, exceptions, top rules, OWASP categories
-- ✅ Modal: 720px wide, 2-column metadata grid (grid2col helper)
-- ✅ "Data ▾" dropdown in navbar
-
-### scd-server — Insights (`/insights`) — new 2026-03-30
-- ✅ Own navbar entry — visible to all roles
-- ✅ Filters: period (30/90/180/365 days), repository, installation
-- ✅ Six stat cards: total scans, active repos, active developers, clean scan rate, total critical, blocked
-- ✅ Finding Trend — stacked bar chart (Chart.js) per week, Critical/High/Medium
-- ✅ Knowledge Gaps — OWASP categories as horizontal bars, dominant gap CTA ("Consider workshop")
-- ✅ Most Triggered Rules — top 8 rules with bars, clickable links to drill-down
-- ✅ Scanning Activity — repos with color dot (green/yellow/red by recency), stale warning
-- ✅ Risk Decisions — most accepted exceptions, flags rules with 5+ accepted exceptions
-- ✅ All sections update on filter change, chart rebuilt without flicker
-
-### scd-server — Drill-down detail pages (Nivå 1)
+### scd-server — Drill-down detail pages
 - ✅ Rule, Repo, Installation detail with 12-week trend charts
+- ✅ Exclude toggle on Repo and Installation detail pages
 
-### scd-server — Database schema
-Tables: `installations`, `repos`, `scans`, `scan_categories`, `scan_top_rules`,
-`raw_events`, `server_config`, `sessions`, `users`, `exceptions`
+### scd-server — Database
+- Tables: `installations`, `repos`, `scans`, `scan_categories`, `scan_top_rules`,
+  `findings`, `raw_events`, `server_config`, `sessions`, `users`, `exceptions`,
+  `deep_results`, `ai_config`
+- Key queries: `getInsightsSummary`, `getInsightsScanActivity`,
+  `getInsightsExceptionRate`, `getInsightsTrend`,
+  `getInsightsDeveloperSummary`, `getInsightsDeveloperGaps`,
+  `getScanDetail`, `getCRAScanSummary`, `getCRAOpenFindings`, `getCRARiskRegister`,
+  `setInstallationExcluded`, `setRepoExcluded`, `insertFindings`
 
-New db queries: `getInsightsSummary`, `getInsightsScanActivity`,
-`getInsightsExceptionRate`, `getInsightsTrend`
+### UI terminology
+- "installation" is internal/technical — DB schema and URLs unchanged
+- All user-facing UI uses "developer" or "developer machine"
 
 ---
 
 ## Next on roadmap
 
-### `pkg` – Binary distribution (before first customer)
-- Eliminates Node version conflicts for customers
-- Requires solving `better-sqlite3` native addon packaging
-- One binary per platform: macOS (arm64 + x64), Linux (x64)
+### Findings drill-down på servern
+- Findings per repo (prioritet 1)
+- Findings globalt (prioritet 2)  
+- Findings per scan (prioritet 3)
 
-### Per-developer breakdown (Fas 2 remaining)
-- Knowledge gap analysis per developer (Insights page extension)
-- Drill-down Nivå 2: per-finding aggregates in push events
+### audit.log sync CLI→server
+- ✅ `findings_batch` event i push-queue — alla findings synkas automatiskt vid varje scan
+- ✅ `snippet` och `taint_source` inkluderas i finding-events (audit.log + push-queue)
+- ✅ `scd sync --history` — engångsync av befintlig audit.log (idempotent, safe att köra flera ggr)
+- ✅ Historik chunkas i grupper om 10 sessioner per request
+- ✅ Ny `findings`-tabell på servern med UNIQUE constraint
+- ✅ `insertFindings()` med transaktionsbaserad batch-insert
+- ✅ `routes-events.js` separerar `findings_batch` från scan-events
+- ✅ Body limit höjd till 10mb i server.js för stora historik-syncar
+- ✅ Starter→Team uppgradering: kör `scd sync --history` i varje repo
+
+### `pkg` — Binary distribution (before first customer)
+- Eliminates Node version conflicts
+- One binary per platform: macOS (arm64 + x64), Linux (x64)
 
 ### `scd deps` — Dependency scanning
 - CVE lookup via OSV API
-- Natural complement to code scanning
+
+### `deep-analyzer.js` refactor
+- `--deep` should route via scd-server instead of direct Anthropic API
+- Waiting for more info before implementing
 
 ### Fas 3
-- CRA/NIS2 compliance reports — additional report types
+- NIS2 Compliance Report
 - Plugin API + commercial rule packs
-- Rule signing (Activemind-verified vs community)
+- Rule signing
 
-### Feature backlog (not forgotten)
-- Export filtered data from Data pages (CSV/JSON)
-- audit.log sync CLI→server (Drill-down Nivå 3 prerequisite)
-- Per-developer breakdown in Insights
-- Server-side PDF generation for reports
-
----
-
-## Reports Roadmap (Fas 3+)
-
-| Report | Status | CRA/NIS2 ref |
-|---|---|---|
-| CRA Compliance Report | ✅ MVP | Art. 13, 14, Annex I+II |
-| NIS2 Compliance Report | Planned | Art. 21 NIS2 |
-| Vulnerability Disclosure Register | Planned | CRA Art. 14 |
-| Remediation Timeline | Planned | CRA Art. 13 §2 |
-| SDLC Security Evidence | Planned | CRA Annex II |
-| Per-repo / per-installation filters | ✅ Done | All |
-| Server-side PDF generation | Planned | All |
-| audit.log sync CLI→server | Prerequisite | Drill-down Nivå 3 |
-
----
-
-## Parked ideas (not forgotten)
-
-- Full AST-based taint analysis engine
-- Rule customization per repo
-- Drill-down Nivå 3: full findings in scd-server
-- scan_sensitivity: strict | balanced | relaxed per rule category
-- Deep analysis in pre-push hook
-- IDE extension (VS Code)
-- Config signing (supply chain protection)
-- Activemind-hosted cloud central
-- Server-side notifications (email/Discord/webhook)
+### Feature backlog
+- Export from Data pages (CSV/JSON)
+- Per-developer breakdown in Insights (extended)
+- Server-side PDF generation
 
 ---
 
 ## Known issues / technical debt
 
 - `scd report --open` on Linux blocked by Firefox `file://` policy → use `--serve`
-- scd-server requires Node 18 (better-sqlite3 native addon)
-- **PY-INJ-001** false positive: `cursor.execute("SELECT ... %s", (val,))` — pre-existing issue
+- **PY-INJ-001** false positive: `cursor.execute("SELECT ... %s", (val,))` — pre-existing
 - CRA report Section 2 shows aggregated scan totals, not unique findings
-- Taint antipattern window can suppress valid findings when safe/unsafe code are adjacent
 
 ### Key design rules (accumulated learnings)
-- **onclick with function args in HTML strings**: always use `data-*` + `addEventListener`.
-  Never `onclick="fn('value')"` or escaped quotes — causes SyntaxError in browser.
-- **Inline negative lookahead** in patterns (not antipattern window) for unparameterized query rules
+- **onclick with function args**: always use `data-*` + `addEventListener` — never inline quotes
+- **Inline negative lookahead** for unparameterized query rules
 - **taintAware rules**: must not fall through when no varName extracted
-- **Dedup**: Pass 1 ruleId:file:line (taintSource wins), Pass 2 file:line (higher severity wins)
-- **Scan ID**: s-XXXXXXXX format — random, timezone-free, same ID in CLI file + server session_id
-
-### Exception flow design notes
-- `updateExceptionStatus` uses line-by-line YAML parsing
-- `db_id` written to config.yml on sync so `scd resolve --rejected` can notify server
-- `handledExceptionIds` in meta.json prevents sync-notice re-appearing after resolve
+- **Scan ID**: `s-XXXXXXXX` format — random, timezone-free, same in CLI + server `session_id`
+- **UI terminology**: "installation" = internal. UI says "developer" / "developer machine"
+- **Exclude pattern**: UI disables button (opacity + disabled attr), backend uses `requireAdmin`
+- **Template literals in Node.js HTML**: use string concatenation — nested backticks cause syntax errors
+- **`findings_batch` event**: skickas alltid via push-queue efter scan (utöver `scan_completed`)
+- **`scd sync --history`**: läser hela audit.log, rekonstruerar findings per session_id, chunkar 10 sessioner/request
+- **`--no-sync`**: skips enqueue + tryFlush, audit.log still written locally
 
 ---
 
@@ -228,94 +190,5 @@ New db queries: `getInsightsSummary`, `getInsightsScanActivity`,
 
 At the end of each work session:
 1. Ask Claude to generate an updated `PROGRESS.md`
-2. Copy into `docs/PROGRESS.md` in repo, commit and push
-3. Replace the file in Claude Project Knowledge (delete old, upload new)
-
----
-
-## scd-ai — Local AI layer (new track, 2026-03-31)
-
-### Active development track — separate from scd CLI / scd-server track
-
-**Chat:** scd-ai session
-**Branch:** `feature/scd-ai` in scd-server repo
-
-### Architecture decisions (completed 2026-03-31)
-
-- ✅ scd-ai is a **commercial add-on** — Deep Analysis Pack (local variant)
-- ✅ All AI logic lives in scd-server — CLI is a transport layer only
-- ✅ `--deep` in CLI becomes a teaser: prints subscription prompt if no scd-server + entitlement
-- ✅ Provider: Ollama (MIT license) — HTTP API only, no SDK dependency
-- ✅ Recommended model: `qwen2.5-coder:14b` (Apache 2.0, 16GB RAM)
-- ✅ Minimum model: `qwen2.5-coder:7b` (Apache 2.0, 8GB RAM)
-- ✅ Embedding model: `nomic-embed-text` (Apache 2.0)
-- ✅ KB two-layer design: Layer 1 deterministic (ruleId lookup), Layer 2 semantic (sqlite-vec)
-- ✅ Database separation: `scd.db` (app data) + `scd-kb.db` (KB embeddings only)
-- ✅ `deep_source` on every result: `provider`, `model`, `code_left_environment`, `analyzed_at`
-- ✅ trust_level scale: `maximum_privacy` → local only, `balanced` → local preferred, `maximum_analysis` → cloud
-- ✅ Architecture documented in `ARCHITECTURE-AI.md` + `CODEBASE-AI.md`
-- ✅ `ARCHITECTURE.md` + `CODEBASE.md` updated with scd-ai sections
-
-### PoC completed (2026-03-31)
-
-- ✅ `lib/ai-providers/local.js` — Ollama HTTP client (generate, embed, checkHealth)
-- ✅ `lib/ai-engine.js` — orchestrator: prompt assembly, Pass 1 + Pass 2, deep_source tagging
-- ✅ `lib/routes-ai.js` — POST /api/v1/deep/analyze + GET /api/v1/ai/health
-- ✅ `db.js` — deep_results + ai_config tables added (additive, no FK on repo_id)
-- ✅ `server.js` — routes-ai registered (on feature/scd-ai only)
-- ✅ `config.example.yml` — ai: block added
-- ✅ `lib/server-config.js` — parseYaml extended to handle nested blocks (ai:)
-- ✅ End-to-end chain verified: CLI → scd-server → ai-engine → provider → deep_source tagged
-- ✅ Graceful error handling verified: provider unreachable returns well-formed JSON with _error field
-- ✅ Branch: `feature/scd-ai` pushed to GitHub
-
-### Verified against Ollama on office machine (2026-03-31)
-
-- ✅ Ollama reachable at `http://192.168.0.60:11434` from dev Mac
-- ✅ `qwen2.5-coder:7b` installed and responding (~5s for simple prompt locally)
-- ✅ `nomic-embed-text` installed (replaces embeddinggemma)
-- ✅ Full end-to-end analysis verified — PHP-INJ-002 finding returned:
-  - `confirmed: true`, `confidence: HIGH` — correct assessment
-  - Concrete attack scenario, correct fix code, pedagogical explanation
-  - `deep_source.code_left_environment: false`, `pass: pass1`
-- ✅ Structured JSON output parses correctly without KB
-- ✅ `timeout_ms: 300000` required for 8GB RAM machine with 7b model
-
-### Bugfixes applied (2026-03-31)
-
-- ✅ `server-config.js` parseYaml — nested YAML blocks (ai:) were silently ignored
-- ✅ `ai_endpoint` replaces `ollama_url` — provider-agnostic naming
-- ✅ `deep_results` — FK on repo_id removed (deep analysis may run before first scan event syncs)
-- ✅ `routes-ai.js` auth imports — `requireBearer` from `auth.js`, `requireDashboard` from `session-auth.js`
-- ✅ `server.js` on main — routes-ai registration removed (belongs on feature/scd-ai only)
-
-### KB Layer 1 completed (2026-04-01)
-
-- ✅ `lib/ai-kb.js` — KB access layer: loads rules/ at startup, buildKbContext(), getStats()
-- ✅ `lib/ai-engine.js` — KB context injected into prompt per unique ruleId
-- ✅ `lib/routes-ai.js` — health endpoint reports kb_layer1_rules count
-- ✅ `lib/ai-providers/local.js` — `ollama` → `provider_status` in health response
-- ✅ System prompt updated: API-matching instruction (match fix to existing code APIs)
-- ✅ 13 rule KB files created and validated:
-  - Injection: `PHP-INJ-001`, `PHP-INJ-002`, `INJ-001`, `INJ-002`, `PY-INJ-001`, `PY-INJ-002`
-  - Path traversal: `PHP-PATH-001`, `PY-PATH-001`
-  - Auth/Secrets: `JWT-001`, `PHP-AUTH-001`, `AUTH-001`, `PY-AUTH-001`, `SECRETS-001`
-- ✅ KB verified: health endpoint reports `kb_layer1_rules: 13`
-- ✅ Quality comparison with/without KB: improved technical_reasoning and verification_steps
-
-### Known quality issues (quality backlog)
-
-- `PHP-INJ-002` fix_code uses PDO despite mysqli in original code — 7b model ignores API-match instruction. Expected to improve with 14b model on better hardware.
-
-### Next steps (scd-ai session)
-
-- KB Layer 1 continued: crypto rules (weak hashing, insecure random, weak crypto)
-- KB Layer 2: OWASP and framework markdown files + `lib/ai-kb-store.js` (sqlite-vec)
-- Merge `server-config.js` nested YAML fix to main (needed by scd – session 2)
-
-### Pending — CLI refactor (coordinate with scd – session 2)
-
-- `lib/deep-analyzer.js` — refactor to route via scd-server instead of Anthropic API directly
-- `bin/scd.js` — store deep_source in audit.log + saveCache()
-- Teaser message when no server configured or entitlement missing
-- **Note:** CLI can be refactored in parallel with KB development. Required before full end-to-end `scd scan --deep` test.
+2. Copy into `docs/PROGRESS.md` in scd repo, commit and push
+3. Replace the file in Claude Project Knowledge
