@@ -284,47 +284,29 @@ program
     // ── Deep analysis (--deep) ───────────────────────────────────────────
     let deepResults = null;
     if (opts.deep) {
-      // Respect trust_level – maximum_privacy means no external API calls
+      // maximum_privacy blocks all external calls — deep analysis not permitted
       if (config.trust_level === 'maximum_privacy') {
         console.log('\n\x1b[33m⚠️  --deep is disabled when trust_level is maximum_privacy.\x1b[0m');
-        console.log('\x1b[90m   No code is sent externally. Set trust_level: balanced in securityagent.yml to enable.\x1b[0m\n');
-        await tryFlush(opts);
-        process.exit(0);
-      }
-
-      const { deepAnalyze, formatDeepSection } = require('../lib/deep-analyzer');
-      const { getApiKey } = require('../lib/global-config');
-      const apiKey = getApiKey();
-
-      if (!apiKey) {
-        console.log('\n\x1b[31m❌ --deep requires an Anthropic API key.\x1b[0m');
-        console.log('\x1b[90m   Run: scd configure --api-key sk-ant-...\x1b[0m\n');
-        await tryFlush(opts);
-        process.exit(0);
-      }
-
-      const critHighCount = findings.filter(f => f.severity === 'CRITICAL' || f.severity === 'HIGH').length;
-      if (critHighCount === 0) {
-        console.log('\n\x1b[90m ℹ️  No CRITICAL/HIGH findings to deep-analyse.\x1b[0m\n');
+        console.log('\x1b[90m   Set trust_level: balanced in securityagent.yml to enable.\x1b[0m\n');
       } else {
-        console.log(`\n\x1b[90m 🔍 Starting Claude deep analysis of ${critHighCount} CRITICAL/HIGH findings...\x1b[0m`);
-        try {
-          // Resolve delay: --delay flag > config deep_delay_ms > 0
-          const delayMs = opts.deepDelay
-            ? parseInt(opts.deepDelay, 10)
-            : (config && config.deep_delay_ms ? config.deep_delay_ms : 0);
+        const { deepAnalyze, formatDeepSection } = require('../lib/deep-analyzer');
+        const { getCentralUrl, getCentralToken }  = require('../lib/global-config');
 
-          deepResults = await deepAnalyze(findings, {
-            apiKey,
-            interactive: true,
-            verbose: true,
-            delayMs,
-          });
-          const deepOutput = formatDeepSection(findings, deepResults);
-          if (deepOutput) console.log(deepOutput);
-        } catch (err) {
-          console.log(`\n\x1b[31m❌ Deep analysis failed: ${err.message}\x1b[0m\n`);
-        }
+        const centralUrl = getCentralUrl();
+        const token      = getCentralToken();
+        const repoId     = require('../lib/store').getRepoId(repoRoot);
+
+        deepResults = await deepAnalyze(findings, {
+          centralUrl,
+          token,
+          repoId,
+          scanId,
+          trustLevel: config.trust_level || 'balanced',
+          verbose:    true,
+        });
+
+        const deepOutput = formatDeepSection(findings, deepResults);
+        if (deepOutput) console.log(deepOutput);
       }
     }
 
@@ -712,28 +694,15 @@ program
   .command('insights')
   .description('Analyze behavioral patterns and knowledge gaps from the audit log')
   .option('--days <n>',  'Analyze the last N days (default: 90)', '90')
-  .option('--deep',      'Send statistics to Claude API for deep analysis')
   .action(async (opts) => {
-    const { analyzeInsights }  = require('../lib/insights-analyzer');
-    const { renderInsights }   = require('../lib/insights-output');
-    const { getApiKey }        = require('../lib/global-config');
-    const repoRoot             = getRepoRoot();
-    const days                 = Math.max(1, parseInt(opts.days) || 90);
+    const { analyzeInsights } = require('../lib/insights-analyzer');
+    const { renderInsights }  = require('../lib/insights-output');
+    const repoRoot            = getRepoRoot();
+    const days                = Math.max(1, parseInt(opts.days) || 90);
 
     console.log(`\n\x1b[2m↺ Analyzing audit log (last ${days} days)…\x1b[0m`);
 
-    let apiKey = null;
-    if (opts.deep) {
-      apiKey = getApiKey();
-      if (!apiKey) {
-        console.log('\n\x1b[31m❌ --deep requires an Anthropic API key.\x1b[0m');
-        console.log('\x1b[90m   scd configure --api-key sk-ant-...\x1b[0m\n');
-        process.exit(1);
-      }
-      console.log('\x1b[2m  Sending statistics to Claude API…\x1b[0m');
-    }
-
-    const analysis = await analyzeInsights(repoRoot, { deep: opts.deep, apiKey, days });
+    const analysis = await analyzeInsights(repoRoot, { days });
     renderInsights(analysis);
   });
 
@@ -742,15 +711,13 @@ program
 program
   .command('configure')
   .description('Manage global configuration (API key etc.)')
-  .option('--api-key <key>',    'Save Anthropic API key for --deep analysis')
-  .option('--clear-api-key',    'Remove saved API key')
   .option('--show',             'Show current global configuration')
   .option('--central-url <url>',  'Set scd-server URL (enables push queue)')
   .option('--clear-central-url',  'Remove scd-server URL (disables push queue)')
   .option('--token <token>',       'Set scd-server API token')
   .option('--clear-token',         'Remove scd-server API token')
   .action((opts) => {
-    const { get, set, remove, maskApiKey, showConfig, getCentralUrl, setCentralUrl, removeCentralUrl, getCentralToken, setCentralToken, removeCentralToken, GLOBAL_CONFIG } =
+    const { getCentralUrl, setCentralUrl, removeCentralUrl, getCentralToken, setCentralToken, removeCentralToken } =
       require('../lib/global-config');
 
     const CYAN  = '\x1b[36m';
@@ -759,36 +726,6 @@ program
     const DIM   = '\x1b[2m';
     const BOLD  = '\x1b[1m';
     const RESET = '\x1b[0m';
-
-    // ── --api-key <key> ───────────────────────────────────────────────────
-    if (opts.apiKey) {
-      const key = opts.apiKey.trim();
-
-      // Basic format validation – Anthropic keys start with sk-ant-
-      if (!key.startsWith('sk-ant-')) {
-        console.error(`\n${RED}✗ Invalid API key.${RESET}`);
-        console.error(`  Anthropic API keys start with ${DIM}sk-ant-${RESET}`);
-        console.error(`  Get your key at: ${CYAN}https://console.anthropic.com/settings/keys${RESET}\n`);
-        process.exit(1);
-      }
-
-      set('ANTHROPIC_API_KEY', key);
-      console.log(`\n${GREEN}✓ API key saved${RESET} → ${DIM}${GLOBAL_CONFIG}${RESET}`);
-      console.log(`  ${DIM}${maskApiKey(key)}${RESET}`);
-      console.log(`\n  ${DIM}Use 'scd scan --deep' to enable Claude analysis.${RESET}\n`);
-      process.exit(0);
-    }
-
-    // ── --clear-api-key ───────────────────────────────────────────────────
-    if (opts.clearApiKey) {
-      const removed = remove('ANTHROPIC_API_KEY');
-      if (removed) {
-        console.log(`\n${GREEN}✓ API key removed${RESET} from ${DIM}${GLOBAL_CONFIG}${RESET}\n`);
-      } else {
-        console.log(`\n${DIM}No API key to remove.${RESET}\n`);
-      }
-      process.exit(0);
-    }
 
     // ── --central-url <url> ───────────────────────────────────────────────
     if (opts.centralUrl) {
@@ -839,25 +776,9 @@ program
     }
 
     // ── --show (default if no flags) ──────────────────────────────────────
-    const info = showConfig();
     const centralUrl = getCentralUrl();
 
     console.log(`\n${CYAN}${BOLD}Secure Code by Design – Global configuration${RESET}\n`);
-    console.log(`  Config file:  ${DIM}${info.configPath}${RESET}`);
-    console.log(`  File exists:  ${info.exists ? GREEN + 'yes' : DIM + 'no (no settings saved yet)'}${RESET}`);
-    console.log('');
-    console.log(`  API key:      ${info.apiKey}`);
-    console.log(`  Source:       ${DIM}${info.apiKeySource}${RESET}`);
-    console.log('');
-
-    if (!info.apiKeySource || info.apiKeySource === '(not set)') {
-      console.log(`  ${DIM}Set API key:     scd configure --api-key sk-ant-...${RESET}`);
-      console.log(`  ${DIM}Alternative:     export ANTHROPIC_API_KEY="sk-ant-..."${RESET}`);
-    } else {
-      console.log(`  ${DIM}Clear key:       scd configure --clear-api-key${RESET}`);
-      console.log(`  ${DIM}Deep analysis:   scd scan --deep${RESET}`);
-    }
-    console.log('');
     console.log(`  Central URL:  ${centralUrl ? GREEN + centralUrl : DIM + '(not set – push queue disabled)'}${RESET}`);
     console.log('');
     if (centralUrl) {
