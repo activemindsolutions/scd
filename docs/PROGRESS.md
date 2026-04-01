@@ -276,7 +276,7 @@ At the end of each work session:
 - ✅ `nomic-embed-text` installed (replaces embeddinggemma)
 - ✅ Full end-to-end analysis verified — PHP-INJ-002 finding returned:
   - `confirmed: true`, `confidence: HIGH` — correct assessment
-  - Concrete attack scenario, correct PDO fix code, pedagogical explanation
+  - Concrete attack scenario, correct fix code, pedagogical explanation
   - `deep_source.code_left_environment: false`, `pass: pass1`
 - ✅ Structured JSON output parses correctly without KB
 - ✅ `timeout_ms: 300000` required for 8GB RAM machine with 7b model
@@ -289,14 +289,29 @@ At the end of each work session:
 - ✅ `routes-ai.js` auth imports — `requireBearer` from `auth.js`, `requireDashboard` from `session-auth.js`
 - ✅ `server.js` on main — routes-ai registration removed (belongs on feature/scd-ai only)
 
+### KB Layer 1 completed (2026-04-01)
+
+- ✅ `lib/ai-kb.js` — KB access layer: loads rules/ at startup, buildKbContext(), getStats()
+- ✅ `lib/ai-engine.js` — KB context injected into prompt per unique ruleId
+- ✅ `lib/routes-ai.js` — health endpoint reports kb_layer1_rules count
+- ✅ `lib/ai-providers/local.js` — `ollama` → `provider_status` in health response
+- ✅ System prompt updated: API-matching instruction (match fix to existing code APIs)
+- ✅ 13 rule KB files created and validated:
+  - Injection: `PHP-INJ-001`, `PHP-INJ-002`, `INJ-001`, `INJ-002`, `PY-INJ-001`, `PY-INJ-002`
+  - Path traversal: `PHP-PATH-001`, `PY-PATH-001`
+  - Auth/Secrets: `JWT-001`, `PHP-AUTH-001`, `AUTH-001`, `PY-AUTH-001`, `SECRETS-001`
+- ✅ KB verified: health endpoint reports `kb_layer1_rules: 13`
+- ✅ Quality comparison with/without KB: improved technical_reasoning and verification_steps
+
+### Known quality issues (quality backlog)
+
+- `PHP-INJ-002` fix_code uses PDO despite mysqli in original code — 7b model ignores API-match instruction. Expected to improve with 14b model on better hardware.
+
 ### Next steps (scd-ai session)
 
-- KB Layer 1: create first rule JSON files in `lib/ai-kb/rules/` (start: PHP-INJ-002, INJ-001, PY-INJ-001)
-- KB Layer 2: create OWASP and framework markdown files
-- `lib/ai-kb.js` — KB access layer
-- `lib/ai-kb-store.js` — sqlite-vec abstraction
-- Integrate KB context into `ai-engine.js` prompts
-- Compare output quality with vs without KB on same finding
+- KB Layer 1 continued: crypto rules (weak hashing, insecure random, weak crypto)
+- KB Layer 2: OWASP and framework markdown files + `lib/ai-kb-store.js` (sqlite-vec)
+- Merge `server-config.js` nested YAML fix to main (needed by scd – session 2)
 
 ### Pending — CLI refactor (coordinate with scd – session 2)
 
