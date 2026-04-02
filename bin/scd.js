@@ -456,6 +456,16 @@ program
 
 
 program
+  .command('remove')
+  .description('Remove this repo from scd — marks as inactive and optionally deletes scan history')
+  .action(async () => {
+    const { removeRepo } = require('../lib/remove-repo');
+    const repoRoot = getRepoRoot();
+    await removeRepo(repoRoot);
+  });
+
+
+program
   .command('report')
   .description('Generate HTML, Markdown or JSON report from the last scan (without re-scanning)')
   .option('--format <fmt>', 'html (default), md, json', 'html')
