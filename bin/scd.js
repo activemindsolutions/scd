@@ -735,7 +735,11 @@ program
         process.exit(1);
       }
       setCentralUrl(url);
-      console.log(`\n${GREEN}✓ Central URL saved${RESET} → ${DIM}${url}${RESET}`);
+      const savedUrl = getCentralUrl();
+      console.log(`\n${GREEN}✓ Central URL saved${RESET} → ${DIM}${savedUrl}${RESET}`);
+      if (savedUrl !== url) {
+        console.log(`  ${DIM}(normalized from ${url})${RESET}`);
+      }
       console.log(`  ${DIM}Push queue enabled – events will sync on each scd command.${RESET}\n`);
       process.exit(0);
     }
