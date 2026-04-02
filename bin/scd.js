@@ -287,7 +287,7 @@ program
       // maximum_privacy blocks all external calls — deep analysis not permitted
       if (config.trust_level === 'maximum_privacy') {
         console.log('\n\x1b[33m⚠️  --deep is disabled when trust_level is maximum_privacy.\x1b[0m');
-        console.log('\x1b[90m   Set trust_level: balanced in securityagent.yml to enable.\x1b[0m\n');
+        console.log('\x1b[90m   Set trust_level: balanced in ~/.scd/repos/{repoId}/config.yml to enable.\x1b[0m\n');
       } else {
         const { deepAnalyze, formatDeepSection } = require('../lib/deep-analyzer');
         const { getCentralUrl, getCentralToken }  = require('../lib/global-config');
