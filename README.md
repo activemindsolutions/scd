@@ -2,7 +2,7 @@
 
 > Automated security scanning for development teams using AI coding tools.
 
-Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilities before they reach production — running quietly in the background via git hooks and on-demand scans. Built for SMB companies using AI coding tools (Claude Code, GitHub Copilot, Cursor) who generate code faster than their security awareness can keep up with.
+Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilities before they reach production — running quietly in the background via git hooks and on-demand scans. Built for SMB companies using traditional coding and AI coding tools (Claude Code, GitHub Copilot, Cursor) which generates code faster than their security awareness can keep up with.
 
 **Not a replacement for penetration testing.** It minimizes the number of vulnerabilities that reach production so that pentests can focus on harder problems.
 
@@ -13,14 +13,28 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 - **174 security rules** across JavaScript, TypeScript, Python, PHP, ASP.NET, and more
 - **Taint analysis** — tracks user-controlled variables from HTTP input to dangerous sinks
 - **Git hooks** – secrets scanning on pre-commit, full OWASP scan on pre-push
-- **Zero repo footprint** – no files written to your repository after init
+- **Zero repo footprint** – no files written or modified to your repository
 - **Compact terminal output** – summary + top issues + most affected files (use `--verbose` for full detail)
 - **HTML, Markdown and JSON reports** with fix guidance for each finding
-- **Deep analysis** – optional AI-powered analysis via scd-server; requires the Deep Analysis Pack
+- **Deep analysis** – optional AI-powered analysis via scd-server; requires the Deep Analysis Pack (Premium)
 - **Per-scan storage** – every scan saved with a unique random ID (`s-a3f9b2c1`), never overwritten; regenerate reports from any historical scan
 - **Exception management** – reviewed exceptions tracked in config, never as code comments
 - **Exception sync** – pull team-lead approvals from scd-server, sync rejected back with reason
 - **Audit trail** – append-only scan history per repository
+
+## Team & Premium
+
+The Starter tier is free and covers individual developers and small teams working locally. When you're ready to collaborate across a team, scd-server extends the CLI with:
+
+- **Team dashboard** — aggregated findings, trend analysis, and knowledge gap tracking across your whole team
+- **Exception approval flow** — developers request exceptions, team leads approve or reject with a reason
+- **CRA Compliance Report** — ready-made documentation for EU Cyber Resilience Act conformity assessments
+- **Findings history** — every scan from every developer in one place, searchable and filterable
+- **Deep Analysis Pack** — AI-powered analysis of CRITICAL and HIGH findings; confirms real vulnerabilities, identifies false positives, and suggests concrete fixes. Your code never leaves your infrastructure.
+
+scd-server runs in your own infrastructure. No code, no findings, and no scan data ever leaves your network.
+
+See [securecodebydesign.com](https://securecodebydesign.com) for plans and pricing.
 
 ---
 
@@ -67,9 +81,6 @@ scd scan
 # Run with verbose output (full file-grouped + rule-grouped detail)
 scd scan --verbose
 
-# Run with AI deep analysis
-scd scan --deep
-
 # Generate an HTML report from the last scan
 scd report
 
@@ -86,7 +97,7 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 
 | Command | Description |
 |---|---|
-| `scd scan [target]` | Run a full security scan (compact output by default) |
+| `scd scan [target]` | Run a full security scan — vendor/dependency code excluded by default |
 | `scd scan --verbose` | Full file-grouped + rule-grouped output |
 | `scd scan --deep` | Deep analysis via scd-server (requires Deep Analysis Pack) |
 | `scd scan --include-vendor` | Include vendor/dependency code in scan |
@@ -143,6 +154,7 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 |---|---|
 | `scd init` | Register repo and install git hooks |
 | `scd configure --central-url <url>` | Set scd-server URL for team sync |
+| `scd configure --token <token>` | Set scd-server API token |
 | `scd version` | Detailed version info |
 | `scd doctor` | Verify installation and configuration |
 
@@ -287,7 +299,11 @@ After `scd sync`, the next scan shows pending status inline:
 
 ### Project configuration
 
-Place `securityagent.yml` in your project root to configure scanning behaviour:
+`securityagent.yml` is the one file scd reads from your repository. It is intentionally placed in the repo root so that scan behaviour — trust level, blocking rules, scan mode — is version-controlled alongside your code and shared consistently across your whole team.
+
+All other scd data (scan history, exceptions, reports) lives in `~/.scd/` outside your repository and is never committed.
+
+Consider adding `securityagent.yml` to `.gitignore` if you prefer not to share your security configuration publicly. In that case each developer configures their own local copy.
 
 ```yaml
 trust_level: balanced        # maximum_privacy | balanced | maximum_analysis
@@ -342,10 +358,6 @@ lib/
   report-json.js          ← JSON report generator
   export-findings.js      ← Export findings to JSON
   rules/                  ← Rule definitions per language
-docs/
-  ARCHITECTURE.md         ← Product vision and technical architecture
-  CODEBASE.md             ← File-by-file reference
-  PROGRESS.md             ← Roadmap and current status
 ```
 
 ---
@@ -353,10 +365,20 @@ docs/
 ## Roadmap
 
 - `scd deps` – Dependency scanning with CVE lookup via OSV API
-- `scd deps` – Dependency scanning with CVE lookup via OSV API
-- `pkg` binary distribution — no Node.js required at customer site
 - VS Code extension
 - `scd uninstall` – clean removal with store data options
+
+---
+
+## Security & responsible disclosure
+
+Secure Code by Design is a security tool — and like any software, it may contain vulnerabilities. We encourage security testing of this product and welcome responsible disclosure.
+
+**Expected behaviour:** Running `scd scan` on this repository will trigger findings in the rule files themselves — patterns that match injection, hardcoded secrets, and similar issues are present by design as test cases. These are expected false positives when scanning the tool's own source code.
+
+**Reporting a vulnerability:** If you discover a genuine security issue, please report it privately to [security@activemind.se](mailto:security@activemind.se). Do not open a public GitHub issue for security vulnerabilities.
+
+We aim to acknowledge reports within 2 business days and resolve confirmed issues as quickly as possible. Credit is given to researchers who report valid findings responsibly.
 
 ---
 
