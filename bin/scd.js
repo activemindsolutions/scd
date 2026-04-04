@@ -29,7 +29,12 @@ async function tryFlush(opts = {}) {
     const repoRoot = (() => {
       try { return require('../lib/config').getRepoRoot(); } catch { return null; }
     })();
-    await flush(centralUrl, { repoRoot });
+    const status = await flush(centralUrl, { repoRoot });
+    if (status === 'license_invalid') {
+      console.log('\x1b[33m  ⚠  Server license invalid — scan data queued locally.\x1b[0m');
+      console.log('\x1b[90m     Data will sync automatically when the license is restored.\x1b[0m');
+      console.log('\x1b[90m     Contact your scd-server administrator.\x1b[0m');
+    }
   } catch { /* non-fatal */ }
 }
 
