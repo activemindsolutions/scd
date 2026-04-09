@@ -729,10 +729,13 @@ program
   .option('--show',             'Show current global configuration')
   .option('--central-url <url>',  'Set scd-server URL (enables push queue)')
   .option('--clear-central-url',  'Remove scd-server URL (disables push queue)')
-  .option('--token <token>',       'Set scd-server API token')
-  .option('--clear-token',         'Remove scd-server API token')
+  .option('--token <token>',         'Set scd-server API token')
+  .option('--clear-token',           'Remove scd-server API token')
+  .option('--server-timeout <value>', 'Set server API timeout (e.g. 15s, 30s). Default: 30s')
+  .option('--deep-timeout <value>',   'Set deep analysis timeout (e.g. 10m, 20m). Default: 20m')
   .action((opts) => {
-    const { getCentralUrl, setCentralUrl, removeCentralUrl, getCentralToken, setCentralToken, removeCentralToken } =
+    const { getCentralUrl, setCentralUrl, removeCentralUrl, getCentralToken, setCentralToken, removeCentralToken,
+            getServerTimeout, setServerTimeout, getDeepTimeout, setDeepTimeout, parseTimeoutArg } =
       require('../lib/global-config');
 
     const CYAN  = '\x1b[36m';
@@ -794,6 +797,34 @@ program
       process.exit(0);
     }
 
+    // ── --server-timeout <value> ─────────────────────────────────────────
+    if (opts.serverTimeout !== undefined) {
+      try {
+        const ms = parseTimeoutArg(opts.serverTimeout);
+        setServerTimeout(ms);
+        const fmt = ms >= 60000 ? `${Math.round(ms/60000)}m` : `${Math.round(ms/1000)}s`;
+        console.log(`\n${GREEN}✓ Server timeout set to ${fmt} (${ms}ms)${RESET}\n`);
+      } catch (err) {
+        console.error(`\n${RED}❌ ${err.message}${RESET}\n`);
+        process.exit(1);
+      }
+      process.exit(0);
+    }
+
+    // ── --deep-timeout <value> ────────────────────────────────────────────
+    if (opts.deepTimeout !== undefined) {
+      try {
+        const ms = parseTimeoutArg(opts.deepTimeout);
+        setDeepTimeout(ms);
+        const fmt = ms >= 60000 ? `${Math.round(ms/60000)}m` : `${Math.round(ms/1000)}s`;
+        console.log(`\n${GREEN}✓ Deep analysis timeout set to ${fmt} (${ms}ms)${RESET}\n`);
+      } catch (err) {
+        console.error(`\n${RED}❌ ${err.message}${RESET}\n`);
+        process.exit(1);
+      }
+      process.exit(0);
+    }
+
     // ── --show (default if no flags) ──────────────────────────────────────
     const centralUrl = getCentralUrl();
 
@@ -807,6 +838,8 @@ program
       const stale   = staleCount();
       console.log(`  Token:        ${token ? DIM + token.slice(0, 12) + '...' + RESET : RED + '(not set)' + RESET}`);
       console.log(`  Queue:        ${DIM}${pending} pending event(s)${stale > 0 ? '  ' + RED + stale + ' stale' + RESET : ''}${RESET}`);
+      const fmtMs  = ms => ms >= 60000 ? `${Math.round(ms/60000)}m` : `${Math.round(ms/1000)}s`;
+      console.log(`  Server timeout: ${DIM}${fmtMs(getServerTimeout())}${RESET}  Deep timeout: ${DIM}${fmtMs(getDeepTimeout())}${RESET}`);
       console.log('');
       console.log(`  ${DIM}Clear URL:       scd configure --clear-central-url${RESET}`);
       if (token) {
