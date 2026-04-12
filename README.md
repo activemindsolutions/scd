@@ -24,7 +24,7 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 
 ## Team & Premium
 
-The Starter tier is free and covers individual developers and small teams working locally. When you're ready to collaborate across a team, scd-server extends the CLI with:
+scd-server extends the CLI with team collaboration features. When you're ready to move beyond local scanning:
 
 - **Team dashboard** — aggregated findings, trend analysis, and knowledge gap tracking across your whole team
 - **Exception approval flow** — developers request exceptions, team leads approve or reject with a reason
@@ -41,12 +41,14 @@ See [securecodebydesign.com](https://securecodebydesign.com) for plans and prici
 ## Requirements
 
 - Node.js 18 or later
-- Git
+- Git (required for hook installation)
 - npm
 
 **macOS / Linux:** No additional requirements.
 
 **Windows:** Windows 10 (build 1803) or later required. Git for Windows must be installed (not WSL). Windows Terminal or PowerShell recommended — `cmd.exe` has limited ANSI colour support.
+
+> On Windows, the store directory is `%USERPROFILE%\.scd\` (e.g. `C:\Users\YourName\.scd\`). All `~/.scd` references in this documentation refer to this path on Windows.
 
 ---
 
@@ -99,9 +101,11 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 |---|---|
 | `scd scan [target]` | Run a full security scan — vendor/dependency code excluded by default |
 | `scd scan --verbose` | Full file-grouped + rule-grouped output |
-| `scd scan --deep` | Deep analysis via scd-server (requires Deep Analysis Pack) |
+| `scd scan --deep` | Deep analysis via scd-server *(Premium)* |
 | `scd scan --include-vendor` | Include vendor/dependency code in scan |
 | `scd scan --vendor-only` | Scan only vendor/dependency code (supply chain) |
+| `scd scan --no-sync` | Skip pushing this scan to scd-server (audit log kept locally) *(Premium)* |
+| `scd scan --no-audit` | Skip audit logging entirely for this scan |
 
 ### Reports
 
@@ -123,7 +127,7 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 | `scd approve --rule <id> --file <path> --line <n> --reason <text>` | Create accepted-risk exception (pending team-lead approval) |
 | `scd ignore --rule <id> --file <path> --line <n> --reason <text>` | Create general ignore (pending team-lead approval) |
 | `scd ignore ... --tag <text>` | Optional free-text tag, e.g. `false_positive`, `out_of_scope` |
-| `scd sync` | Pull approved/rejected exceptions from scd-server |
+| `scd sync` | Pull approved/rejected exceptions from scd-server *(Premium)* |
 | `scd exceptions` | List all local exceptions |
 | `scd exceptions --list rejected` | List only rejected exceptions |
 | `scd exceptions --list pending\|approved\|all` | Filter by status |
@@ -147,14 +151,17 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 | `scd store --scans` | List all saved scans |
 | `scd store --verify` | Verify all repos exist on disk |
 | `scd store --verify --clean` | Interactive cleanup of missing/stale repos |
+| `scd remove` | Remove current repo from store (scan history preserved by default) |
 
 ### Setup & configuration
 
 | Command | Description |
 |---|---|
 | `scd init` | Register repo and install git hooks |
-| `scd configure --central-url <url>` | Set scd-server URL for team sync |
-| `scd configure --token <token>` | Set scd-server API token |
+| `scd configure --central-url <url>` | Set scd-server URL for team sync *(Premium)* |
+| `scd configure --token <token>` | Set scd-server API token *(Premium)* |
+| `scd configure --server-timeout <value>` | Set timeout for server API calls (e.g. `30s`, `1m`) *(Premium)* |
+| `scd configure --deep-timeout <value>` | Set timeout for deep analysis (e.g. `20m`) *(Premium)* |
 | `scd version` | Detailed version info |
 | `scd doctor` | Verify installation and configuration |
 
@@ -162,16 +169,16 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 
 ## Rule coverage
 
-| Language / Category | Rules | CRITICAL | HIGH | EXPOSURE |
-|---|---|---|---|---|
-| JavaScript / TypeScript | 25 | 7 | 13 | – |
-| Python | 27 | 12 | 11 | 4 |
-| PHP | 28 | 12 | 11 | 4 |
-| ASP.NET markup | 17 | – | – | – |
-| ASP.NET C# | 26 | – | – | – |
-| Sensitive files | 30 | 14 | 10 | 5 |
-| Infrastructure leakage | 21 | – | 4 | 17 |
-| **Total** | **174** | **63** | **71** | **30** |
+| Severity | Rules |
+|---|---|
+| CRITICAL | 63 |
+| HIGH | 71 |
+| MEDIUM | 10 |
+| EXPOSURE | 30 |
+| **Total** | **174** |
+
+Languages covered: JavaScript, TypeScript, Python, PHP, ASP.NET (markup + C#).
+Covers all OWASP Top 10 categories. Run `scd rules --stats` for full breakdown.
 
 Covers OWASP Top 10 categories including Injection, Broken Access Control, Cryptographic Failures, Security Misconfiguration, and more.
 
@@ -181,7 +188,7 @@ Covers OWASP Top 10 categories including Injection, Broken Access Control, Crypt
 
 ### Git hooks
 
-`scd init` configures git to use a shared hooks directory (`~/.scd/hooks`):
+`scd init` configures git to use a shared hooks directory (`~/.scd/hooks` on macOS/Linux, `%USERPROFILE%\.scd\hooks` on Windows):
 
 ```
 pre-commit  → fast secrets scan (blocks CRITICAL findings)
@@ -193,16 +200,17 @@ pre-push    → full OWASP scan  (blocks CRITICAL + HIGH findings)
 All scan data, configs and reports are stored outside your repository:
 
 ```
-~/.scd/
-├── config                    ← central URL, token
+~/.scd/                        # macOS / Linux
+%USERPROFILE%\.scd\           # Windows
+├── config                     ← central URL, token, timeouts
 └── repos/
     └── {repoId}/
-        ├── meta.json         ← repo identity, last scan, sync timestamps
-        ├── config.yml        ← exceptions and rule overrides
-        ├── audit.log         ← full scan history (append-only)
-        ├── last-scan.json    ← copy of latest scan
-        ├── scans/            ← one JSON per scan, never overwritten
-        └── reports/          ← generated HTML/MD/JSON reports
+        ├── meta.json          ← repo identity, last scan, sync timestamps
+        ├── config.yml         ← exceptions and rule overrides
+        ├── audit.log          ← full scan history (append-only)
+        ├── last-scan.json     ← copy of latest scan
+        ├── scans/             ← one JSON per scan, never overwritten
+        └── reports/           ← generated HTML/MD/JSON reports
 ```
 
 ### Scan storage
@@ -301,7 +309,7 @@ After `scd sync`, the next scan shows pending status inline:
 
 `securityagent.yml` is the one file scd reads from your repository. It is intentionally placed in the repo root so that scan behaviour — trust level, blocking rules, scan mode — is version-controlled alongside your code and shared consistently across your whole team.
 
-All other scd data (scan history, exceptions, reports) lives in `~/.scd/` outside your repository and is never committed.
+All other scd data (scan history, exceptions, reports) lives in `~/.scd/` (macOS/Linux) or `%USERPROFILE%\.scd\` (Windows) outside your repository and is never committed.
 
 Consider adding `securityagent.yml` to `.gitignore` if you prefer not to share your security configuration publicly. In that case each developer configures their own local copy.
 
@@ -364,8 +372,7 @@ lib/
 
 ## Roadmap
 
-- `scd deps` – Dependency scanning with CVE lookup via OSV API
-- VS Code extension
+- `scd deps` – Dependency vulnerability scanning against OSV + CISA KEV feeds (designed, in development)
 - `scd uninstall` – clean removal with store data options
 
 ---

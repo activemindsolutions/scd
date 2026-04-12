@@ -8,10 +8,9 @@
 
 ---
 
-## Development machine (npm link)
+## Installation (npm link)
 
-Use this on your primary development machine where the source code lives.
-Changes to the source take effect immediately — no reinstall needed.
+This is the current installation method. Clone the repository and link it globally with npm.
 
 ```bash
 git clone git@github.com:activemindsolutions/scd.git
@@ -31,7 +30,9 @@ npm unlink -g @activemind/scd
 
 ## Other machines (install from tarball)
 
-On the development machine, pack a tarball:
+> **Note:** Tarball distribution is planned but not yet fully verified. The steps below describe the intended workflow. Use npm link (above) in the meantime.
+
+On the machine where scd is cloned, pack a tarball:
 
 ```bash
 cd ~/Projects/scd
@@ -46,7 +47,7 @@ npm install -g activemind-scd-x.y.z.tgz
 scd --version
 ```
 
-To uninstall the binary (store data in ~/.scd is kept):
+To uninstall (store data in `~/.scd` is kept):
 
 ```bash
 npm uninstall -g @activemind/scd
@@ -65,26 +66,34 @@ scd scan             # run first scan
 
 ---
 
-## scd-server setup (Team / Professional tier)
+## Connecting to scd-server *(Premium)*
 
 scd-server provides team dashboards, exception approval, findings history,
-and CRA compliance reports. It runs in your own infrastructure — no data
-leaves your network.
+deep analysis, and CRA compliance reports. It runs in your own infrastructure —
+no data leaves your network.
 
-### Connect CLI to scd-server
+Once your organisation's scd-server is up and running, connect your CLI to it:
 
 ```bash
 scd configure --central-url http://your-server:3000
 scd configure --token <api-token-from-scd-server-admin>
+scd doctor    # verify connection
 ```
 
-Note: `localhost` is automatically normalized to `127.0.0.1` to avoid
-IPv6 resolution issues on some systems.
+> `localhost` is automatically normalised to `127.0.0.1` to avoid IPv6 resolution issues.
 
-### Sync history from existing repos
+### Optional: adjust timeouts
 
-If you are upgrading from Starter to Team, sync your local audit history
-to the server once per repo:
+Default timeouts work for most setups. Adjust if needed:
+
+```bash
+scd configure --server-timeout 30s    # API calls (default: 30s)
+scd configure --deep-timeout 20m      # Deep analysis (default: 20m)
+```
+
+### Sync existing scan history
+
+To push local scan history to a newly connected scd-server:
 
 ```bash
 cd /path/to/your/project
@@ -97,19 +106,20 @@ This is idempotent — safe to run multiple times.
 
 ## Store data
 
-All scan history, configs and reports are stored in:
+All scan history, configs and reports are stored outside your repositories:
 
 ```
-~/.scd/
-  config              ← central URL, token
+~/.scd/                         # macOS / Linux
+%USERPROFILE%\.scd\            # Windows (e.g. C:\Users\YourName\.scd\)
+  config                        ← central URL, token, timeouts
   repos/
     {repoId}/
-      meta.json
-      config.yml
-      audit.log
-      last-scan.json
-      scans/
-      reports/
+      meta.json                 ← repo identity, last scan, timestamps
+      config.yml                ← exceptions and rule configuration
+      audit.log                 ← full scan history (append-only)
+      last-scan.json            ← latest scan cache
+      scans/                    ← one JSON per scan (never overwritten)
+      reports/                  ← generated HTML/MD/JSON reports
 ```
 
 **Uninstalling the `scd` binary does not remove store data.**
@@ -121,26 +131,30 @@ To inspect or clean up store data:
 scd store --show              # info for current repo
 scd store --verify            # check all repos
 scd store --verify --clean    # interactive cleanup
+scd remove                    # remove current repo from store
 ```
 
 To completely remove all store data (irreversible):
 
 ```bash
+# macOS / Linux
 rm -rf ~/.scd
+
+# Windows (PowerShell)
+Remove-Item -Recurse -Force "$env:USERPROFILE\.scd"
 ```
 
 ---
 
 ## Shell aliases
 
-If you previously had aliases set up (e.g. from an older installation),
-remove any that conflict with the global `scd` binary:
+If you previously had aliases set up that conflict with the global `scd` binary,
+remove them from your shell configuration:
 
 ```bash
 # Remove from ~/.zshrc or ~/.bashrc — lines like:
 alias scd=...
 alias sc=...
-export PATH=...security-copilot-poc...
 ```
 
 After editing, reload your shell:
@@ -148,3 +162,5 @@ After editing, reload your shell:
 ```bash
 source ~/.zshrc   # or ~/.bashrc
 ```
+
+On Windows, check your PowerShell profile (`$PROFILE`) for any conflicting aliases.
