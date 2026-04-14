@@ -1,6 +1,6 @@
 {
   "name": "@activemind/scd",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Secure Code by Design \u2013 automated security scanning for development teams",
   "author": "Activemind Solutions AB",
   "license": "SEE LICENSE IN LICENSE.md",
@@ -24,6 +24,6 @@
     "unlink": "npm unlink -g @activemind/scd"
   },
   "dependencies": {
-    "commander": "^11.0.0"
+    "commander": "^14.0.3"
   }
 }

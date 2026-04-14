@@ -40,9 +40,9 @@ See [securecodebydesign.com](https://securecodebydesign.com) for plans and prici
 
 ## Requirements
 
-- Node.js 18 or later
+- Node.js 22 or later
 - Git (required for hook installation)
-- npm
+- npm (included with Node.js)
 
 **macOS / Linux:** No additional requirements.
 
@@ -55,18 +55,11 @@ See [securecodebydesign.com](https://securecodebydesign.com) for plans and prici
 ## Installation
 
 ```bash
-git clone git@github.com:activemindsolutions/scd.git
-cd scd
-npm install
-npm link
-```
-
-### Verify
-
-```bash
+npm install -g @activemind/scd
 scd --version
-scd doctor
 ```
+
+See [INSTALL.md](INSTALL.md) for platform-specific Node.js setup and advanced options.
 
 ---
 
@@ -211,6 +204,7 @@ All scan data, configs and reports are stored outside your repository:
         ├── last-scan.json     ← copy of latest scan
         ├── scans/             ← one JSON per scan, never overwritten
         └── reports/           ← generated HTML/MD/JSON reports
+        └── exports/           ← generated JSON-files from scd export-findings command
 ```
 
 ### Scan storage
@@ -269,7 +263,7 @@ Supports PHP, Python, and JavaScript/TypeScript. Set `scan_mode: fast` in config
 
 **Whole files are never sent.** Deep analysis requires scd-server with the Deep Analysis Pack. See [securecodebydesign.com](https://securecodebydesign.com) for subscription options.
 
-Set `trust_level: maximum_privacy` in `securityagent.yml` to disable all external API calls entirely.
+Set `trust_level: maximum_privacy` in `~/.scd/repos/{repoId}/config.yml` to disable all external API calls entirely.
 
 ### Exception management
 
@@ -307,11 +301,7 @@ After `scd sync`, the next scan shows pending status inline:
 
 ### Project configuration
 
-`securityagent.yml` is the one file scd reads from your repository. It is intentionally placed in the repo root so that scan behaviour — trust level, blocking rules, scan mode — is version-controlled alongside your code and shared consistently across your whole team.
-
-All other scd data (scan history, exceptions, reports) lives in `~/.scd/` (macOS/Linux) or `%USERPROFILE%\.scd\` (Windows) outside your repository and is never committed.
-
-Consider adding `securityagent.yml` to `.gitignore` if you prefer not to share your security configuration publicly. In that case each developer configures their own local copy.
+Per-repository configuration lives in `~/.scd/repos/{repoId}/config.yml` — outside your repository, alongside scan history and exceptions. This keeps your repository clean and avoids committing security configuration to source control.
 
 ```yaml
 trust_level: balanced        # maximum_privacy | balanced | maximum_analysis
@@ -320,6 +310,14 @@ block_on_critical: true
 block_on_high: true
 scan_mode: full              # full (with taint analysis) | fast (regex only)
 ```
+
+`trust_level` controls which external connections are permitted:
+
+| Value | Behaviour |
+|---|---|
+| `maximum_privacy` | No external API calls. Local model only. Strongest privacy guarantee. |
+| `balanced` | Default. Local model preferred; cloud available as explicit opt-in. |
+| `maximum_analysis` | Cloud provider (Claude API). Maximum analysis depth. |
 
 ---
 
@@ -340,7 +338,7 @@ scd export-findings --output /tmp/review.json
 
 ## Multi-machine setup
 
-See [INSTALL.md](INSTALL.md) for full instructions including tarball installation and shell configuration.
+See [INSTALL.md](INSTALL.md) for full platform-specific instructions including Node.js setup for macOS, Linux, and Windows.
 
 ---
 
@@ -366,6 +364,28 @@ lib/
   report-json.js          ← JSON report generator
   export-findings.js      ← Export findings to JSON
   rules/                  ← Rule definitions per language
+```
+
+---
+
+## Dependencies
+
+scd is intentionally lightweight. Keeping the dependency surface small is a deliberate design principle — fewer dependencies means fewer supply chain risks, faster installs, and easier security auditing.
+
+| Package | Version | Purpose |
+|---|---|---|
+| [commander](https://github.com/tj/commander.js) | ^14.0.3 | CLI argument parsing and subcommand structure |
+| [@anthropic-ai/sdk](https://github.com/anthropic-ai/sdk-node) | latest | Deep analysis via Claude API (`scd scan --deep` only) |
+
+`@anthropic-ai/sdk` is only used when `scd scan --deep` is invoked with a connected scd-server. It is never called automatically and never sends data without explicit user action.
+
+No other runtime dependencies. Node.js built-in modules handle everything else.
+
+Verify at any time:
+
+```bash
+npm list          # full dependency tree
+npm audit         # check for known vulnerabilities
 ```
 
 ---
