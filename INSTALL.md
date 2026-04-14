@@ -154,9 +154,9 @@ Uninstalling `scd` does not remove store data — your scan history is preserved
 **Inspect or clean up store data:**
 
 ```bash
-scd store --show              # info for current repo
-scd store --verify            # check all repos
-scd store --verify --clean    # interactive cleanup
+scd repo --show              # info for current repo
+scd repo --verify            # check all repos
+scd repo --verify --clean    # interactive cleanup
 scd remove                    # remove current repo from store
 ```
 

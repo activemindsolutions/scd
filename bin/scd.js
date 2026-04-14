@@ -479,7 +479,7 @@ program
   .option('--serve',         'Serve report via local HTTP server and open in browser (works on all platforms)')
   .option('--port <port>',   'Port for --serve (default: random available port)')
   .option('--index',         'Always show report index page (use with --serve)')
-  .option('--scan <id>',     'Generate report from a specific scan ID (scd store --scans to list)')
+  .option('--scan <id>',     'Generate report from a specific scan ID (scd repo --scans to list)')
   .action(async (opts) => {
     const path = require('path');
     const fs   = require('fs');
@@ -491,7 +491,7 @@ program
       cache = loadScan(repoRoot, opts.scan);
       if (!cache) {
         console.error('\n\x1b[31m✗ Scan not found: ' + opts.scan + '\x1b[0m');
-        console.error('  Run \x1b[36mscd store --scans\x1b[0m to list available scans.\n');
+        console.error('  Run \x1b[36mscd repo --scans\x1b[0m to list available scans.\n');
         process.exit(1);
       }
     } else {
@@ -733,6 +733,10 @@ program
   .option('--clear-token',           'Remove scd-server API token')
   .option('--server-timeout <value>', 'Set server API timeout (e.g. 15s, 30s). Default: 30s')
   .option('--deep-timeout <value>',   'Set deep analysis timeout (e.g. 10m, 20m). Default: 20m')
+  .option('--trust-level <value>',    'Set global default trust level (maximum_privacy|balanced|maximum_analysis)')
+  .option('--scan-mode <value>',      'Set global default scan mode (full|fast)')
+  .option('--block-on-high <value>',  'Set global default block-on-high (true|false)')
+  .option('--block-on-critical <value>', 'Set global default block-on-critical (true|false)')
   .action((opts) => {
     const { getCentralUrl, setCentralUrl, removeCentralUrl, getCentralToken, setCentralToken, removeCentralToken,
             getServerTimeout, setServerTimeout, getDeepTimeout, setDeepTimeout, parseTimeoutArg } =
@@ -825,8 +829,55 @@ program
       process.exit(0);
     }
 
+    // ── global repo defaults ─────────────────────────────────────────────
+    const VALID_TRUST  = ['maximum_privacy', 'balanced', 'maximum_analysis'];
+    const VALID_MODES  = ['full', 'fast'];
+
+    if (opts.trustLevel !== undefined) {
+      if (!VALID_TRUST.includes(opts.trustLevel)) {
+        console.error(`\n${RED}✗ Invalid trust level. Use: ${VALID_TRUST.join(' | ')}${RESET}\n`);
+        process.exit(1);
+      }
+      require('../lib/global-config').set('REPO_TRUST_LEVEL', opts.trustLevel);
+      console.log(`\n${GREEN}✓ Global default trust_level set to ${opts.trustLevel}${RESET}\n`);
+      process.exit(0);
+    }
+
+    if (opts.scanMode !== undefined) {
+      if (!VALID_MODES.includes(opts.scanMode)) {
+        console.error(`\n${RED}✗ Invalid scan mode. Use: full | fast${RESET}\n`);
+        process.exit(1);
+      }
+      require('../lib/global-config').set('REPO_SCAN_MODE', opts.scanMode);
+      console.log(`\n${GREEN}✓ Global default scan_mode set to ${opts.scanMode}${RESET}\n`);
+      process.exit(0);
+    }
+
+    if (opts.blockOnHigh !== undefined) {
+      const val = opts.blockOnHigh.toLowerCase();
+      if (val !== 'true' && val !== 'false') {
+        console.error(`\n${RED}✗ Invalid value. Use: true | false${RESET}\n`);
+        process.exit(1);
+      }
+      require('../lib/global-config').set('REPO_BLOCK_ON_HIGH', val);
+      console.log(`\n${GREEN}✓ Global default block_on_high set to ${val}${RESET}\n`);
+      process.exit(0);
+    }
+
+    if (opts.blockOnCritical !== undefined) {
+      const val = opts.blockOnCritical.toLowerCase();
+      if (val !== 'true' && val !== 'false') {
+        console.error(`\n${RED}✗ Invalid value. Use: true | false${RESET}\n`);
+        process.exit(1);
+      }
+      require('../lib/global-config').set('REPO_BLOCK_ON_CRITICAL', val);
+      console.log(`\n${GREEN}✓ Global default block_on_critical set to ${val}${RESET}\n`);
+      process.exit(0);
+    }
+
     // ── --show (default if no flags) ──────────────────────────────────────
     const centralUrl = getCentralUrl();
+    const gc         = require('../lib/global-config');
 
     console.log(`\n${CYAN}${BOLD}Secure Code by Design – Global configuration${RESET}\n`);
     console.log(`  Central URL:  ${centralUrl ? GREEN + centralUrl : DIM + '(not set – push queue disabled)'}${RESET}`);
@@ -851,10 +902,155 @@ program
       console.log(`  ${DIM}Set server URL:  scd configure --central-url https://your-server:3000${RESET}`);
       console.log(`  ${DIM}Then set token:  scd configure --token <token>${RESET}`);
     }
+
+    // Show global repo defaults
+    const REPO_KEYS = ['trust_level','scan_mode','block_on_critical','block_on_high'];
+    const CODE_DEFAULTS = { trust_level: 'balanced', scan_mode: 'full', block_on_critical: true, block_on_high: true };
+    const hasAny = REPO_KEYS.some(k => gc.get('REPO_' + k.toUpperCase()) !== undefined);
+    console.log(`  ${BOLD}Global repo defaults${RESET} ${DIM}(fallback for all repos unless overridden in config.yml)${RESET}`);
+    for (const key of REPO_KEYS) {
+      const raw = gc.get('REPO_' + key.toUpperCase());
+      const val = raw !== undefined ? raw : String(CODE_DEFAULTS[key]);
+      const src = raw !== undefined ? GREEN + val + RESET : DIM + val + ' (code default)' + RESET;
+      console.log(`  ${DIM}${key.padEnd(20)}${RESET}${src}`);
+    }
+    console.log('');
+    console.log(`  ${DIM}Change global repo defaults with: scd configure --trust-level <value>${RESET}`);
+    console.log(`  ${DIM}                                  scd configure --scan-mode <fast|full>${RESET}`);
+    console.log(`  ${DIM}                                  scd configure --block-on-high <true|false>${RESET}`);
     console.log('');
   });
 
 
+
+
+// ── scd repo configure ──────────────────────────────────────────────────────
+const repoConfigureCmd = new Command('configure')
+  .description('Show and manage per-repo configuration')
+  .option('--show',                      'Show current effective configuration (default)')
+  .option('--trust-level <value>',       'Set trust level (maximum_privacy|balanced|maximum_analysis)')
+  .option('--scan-mode <value>',         'Set scan mode (full|fast)')
+  .option('--block-on-high <value>',     'Set block-on-high (true|false)')
+  .option('--block-on-critical <value>', 'Set block-on-critical (true|false)')
+  .action((opts) => {
+    const fs         = require('fs');
+    const store      = require('../lib/store');
+    const yaml       = require('../lib/config');
+    const gc         = require('../lib/global-config');
+    const repoRoot   = getRepoRoot();
+    const configPath = store.configPath(repoRoot);
+
+    const CYAN  = '\x1b[36m';
+    const GREEN = '\x1b[32m';
+    const RED   = '\x1b[31m';
+    const DIM   = '\x1b[90m';
+    const BOLD  = '\x1b[1m';
+    const RESET = '\x1b[0m';
+
+    const VALID_TRUST = ['maximum_privacy', 'balanced', 'maximum_analysis'];
+    const VALID_MODES = ['full', 'fast'];
+    const KEYS        = ['trust_level', 'scan_mode', 'block_on_critical', 'block_on_high'];
+
+    // Helper: read config.yml, update a key value in-place, write back
+    function updateConfigYml(key, value) {
+      if (!fs.existsSync(configPath)) {
+        console.error(`\n${RED}✗ No config.yml found for this repo.${RESET}`);
+        console.error(`  Run ${CYAN}scd init${RESET} first.\n`);
+        process.exit(1);
+      }
+      let content = fs.readFileSync(configPath, 'utf8');
+      const re = new RegExp(`^(${key}:\s*).*$`, 'm');
+      if (re.test(content)) {
+        content = content.replace(re, `$1${value}`);
+      } else {
+        content = content.trimEnd() + `\n${key}: ${value}\n`;
+      }
+      fs.writeFileSync(configPath, content, 'utf8');
+    }
+
+    // ── set operations ────────────────────────────────────────────────────
+
+    if (opts.trustLevel !== undefined) {
+      if (!VALID_TRUST.includes(opts.trustLevel)) {
+        console.error(`\n${RED}✗ Invalid trust level. Use: ${VALID_TRUST.join(' | ')}${RESET}\n`);
+        process.exit(1);
+      }
+      updateConfigYml('trust_level', opts.trustLevel);
+      console.log(`\n${GREEN}✓ trust_level set to ${opts.trustLevel}${RESET} for this repo\n`);
+      return;
+    }
+
+    if (opts.scanMode !== undefined) {
+      if (!VALID_MODES.includes(opts.scanMode)) {
+        console.error(`\n${RED}✗ Invalid scan mode. Use: full | fast${RESET}\n`);
+        process.exit(1);
+      }
+      updateConfigYml('scan_mode', opts.scanMode);
+      console.log(`\n${GREEN}✓ scan_mode set to ${opts.scanMode}${RESET} for this repo\n`);
+      return;
+    }
+
+    if (opts.blockOnHigh !== undefined) {
+      const val = opts.blockOnHigh.toLowerCase();
+      if (val !== 'true' && val !== 'false') {
+        console.error(`\n${RED}✗ Invalid value. Use: true | false${RESET}\n`);
+        process.exit(1);
+      }
+      updateConfigYml('block_on_high', val);
+      console.log(`\n${GREEN}✓ block_on_high set to ${val}${RESET} for this repo\n`);
+      return;
+    }
+
+    if (opts.blockOnCritical !== undefined) {
+      const val = opts.blockOnCritical.toLowerCase();
+      if (val !== 'true' && val !== 'false') {
+        console.error(`\n${RED}✗ Invalid value. Use: true | false${RESET}\n`);
+        process.exit(1);
+      }
+      updateConfigYml('block_on_critical', val);
+      console.log(`\n${GREEN}✓ block_on_critical set to ${val}${RESET} for this repo\n`);
+      return;
+    }
+
+    // ── show (default) ────────────────────────────────────────────────────
+    const config = yaml.loadConfig(repoRoot);
+
+    let repoYaml = {};
+    if (fs.existsSync(configPath)) {
+      try {
+        const raw = fs.readFileSync(configPath, 'utf8');
+        for (const key of KEYS) {
+          const m = raw.match(new RegExp(`^${key}:\s*(.+)$`, 'm'));
+          if (m) repoYaml[key] = m[1].trim();
+        }
+      } catch { /* ignore */ }
+    }
+
+    console.log(`\n${CYAN}${BOLD}Secure Code by Design – Repo configuration${RESET}`);
+    console.log(`${DIM}${'─'.repeat(52)}${RESET}`);
+    console.log(`${DIM}Repo:   ${repoRoot}${RESET}`);
+    console.log(`${DIM}Config: ${configPath}${RESET}\n`);
+    console.log(`  ${'Setting'.padEnd(22)}${'Value'.padEnd(22)}Source`);
+    console.log(`  ${DIM}${'─'.repeat(54)}${RESET}`);
+
+    for (const key of KEYS) {
+      const inRepo    = key in repoYaml;
+      const globalRaw = gc.get('REPO_' + key.toUpperCase());
+      const inGlobal  = globalRaw !== undefined;
+      const val       = String(config[key]);
+      const source    = inRepo   ? `${GREEN}repo${RESET}`
+                      : inGlobal ? `${CYAN}global${RESET}`
+                      :            `${DIM}default${RESET}`;
+      console.log(`  ${DIM}${key.padEnd(22)}${RESET}${val.padEnd(22)}${source}`);
+    }
+
+    console.log('');
+    console.log(`  ${DIM}scd repo configure --scan-mode <fast|full>        set for this repo${RESET}`);
+    console.log(`  ${DIM}scd repo configure --trust-level <value>          set for this repo${RESET}`);
+    console.log(`  ${DIM}scd repo configure --block-on-high <true|false>   set for this repo${RESET}`);
+    console.log(`  ${DIM}scd configure --scan-mode <value>                 set global default${RESET}`);
+    console.log('');
+  });
 
 
 // ── scd list ────────────────────────────────────────────────────────────────
@@ -914,10 +1110,9 @@ program
   });
 
 
-// ── scd store ───────────────────────────────────────────────────────────────
-program
-  .command('store')
-  .description('Show and navigate the store for the current repo')
+// ── scd repo ────────────────────────────────────────────────────────────────
+const repoCmd = new Command('repo')
+  .description('Show and manage the current repo configuration and store')
   .option('--open',         'Open store folder in Finder / Explorer / file manager')
   .option('--open-reports', 'Open reports folder')
   .option('--reports',      'List saved reports for this repo')
@@ -1167,16 +1362,20 @@ program
     const reports = store.listReports(repoRoot);
     console.log('  Reports:   \x1b[90m' + reports.length + ' saved\x1b[0m');
     console.log();
-    console.log('  \x1b[90mscd store --reports          list saved reports\x1b[0m');
-    console.log('  \x1b[90mscd store --open             open in file manager\x1b[0m');
-    console.log('  \x1b[90mscd store --open-reports     open reports folder\x1b[0m');
-    console.log('  \x1b[90mscd store --path             print path (for scripting)\x1b[0m');
-    console.log('  \x1b[90mscd store --show             show full meta info for current repo\x1b[0m');
-    console.log('  \x1b[90mscd store --scans            list all saved scans\x1b[0m');
-    console.log('  \x1b[90mscd store --verify           verify all repos exist on disk\x1b[0m');
-    console.log('  \x1b[90mscd store --verify --clean   interactive cleanup of stale repos\x1b[0m\n');
+    console.log('  \x1b[90mscd repo configure          show per-repo configuration\x1b[0m');
+    console.log('  \x1b[90mscd repo configure --scan-mode fast   set scan mode\x1b[0m');
+    console.log('  \x1b[90mscd repo --reports          list saved reports\x1b[0m');
+    console.log('  \x1b[90mscd repo --open             open in file manager\x1b[0m');
+    console.log('  \x1b[90mscd repo --open-reports     open reports folder\x1b[0m');
+    console.log('  \x1b[90mscd repo --path             print path (for scripting)\x1b[0m');
+    console.log('  \x1b[90mscd repo --show             show full meta info for current repo\x1b[0m');
+    console.log('  \x1b[90mscd repo --scans            list all saved scans\x1b[0m');
+    console.log('  \x1b[90mscd repo --verify           verify all repos exist on disk\x1b[0m');
+    console.log('  \x1b[90mscd repo --verify --clean   interactive cleanup of stale repos\x1b[0m\n');
   });
 
+repoCmd.addCommand(repoConfigureCmd);
+program.addCommand(repoCmd);
 
 
 // ── scd rules ───────────────────────────────────────────────────────────────

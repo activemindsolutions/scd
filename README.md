@@ -139,11 +139,15 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 | `scd rules --search "injection"` | Free-text search across rules |
 | `scd rules --stats` | Rule counts by severity and language |
 | `scd list` | List all repos registered in store |
-| `scd store` | Show store info for current repo |
-| `scd store --show` | Full metadata for current repo |
-| `scd store --scans` | List all saved scans |
-| `scd store --verify` | Verify all repos exist on disk |
-| `scd store --verify --clean` | Interactive cleanup of missing/stale repos |
+| `scd repo` | Show store info for current repo |
+| `scd repo --show` | Full metadata for current repo |
+| `scd repo --scans` | List all saved scans |
+| `scd repo --verify` | Verify all repos exist on disk |
+| `scd repo --verify --clean` | Interactive cleanup of missing/stale repos |
+| `scd repo configure` | Show per-repo configuration with source (repo/global/default) |
+| `scd repo configure --scan-mode <fast\|full>` | Set scan mode for this repo |
+| `scd repo configure --trust-level <value>` | Set trust level for this repo |
+| `scd repo configure --block-on-high <bool>` | Set blocking behaviour for this repo |
 | `scd remove` | Remove current repo from store (scan history preserved by default) |
 
 ### Setup & configuration
@@ -155,6 +159,9 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 | `scd configure --token <token>` | Set scd-server API token *(Premium)* |
 | `scd configure --server-timeout <value>` | Set timeout for server API calls (e.g. `30s`, `1m`) *(Premium)* |
 | `scd configure --deep-timeout <value>` | Set timeout for deep analysis (e.g. `20m`) *(Premium)* |
+| `scd configure --scan-mode <value>` | Set global default scan mode (overridden by per-repo config) |
+| `scd configure --trust-level <value>` | Set global default trust level |
+| `scd configure --block-on-high <bool>` | Set global default block-on-high |
 | `scd version` | Detailed version info |
 | `scd doctor` | Verify installation and configuration |
 
@@ -195,11 +202,11 @@ All scan data, configs and reports are stored outside your repository:
 ```
 ~/.scd/                        # macOS / Linux
 %USERPROFILE%\.scd\           # Windows
-├── config                     ← central URL, token, timeouts
+├── config                     ← central URL, token, timeouts, global repo defaults
 └── repos/
     └── {repoId}/
         ├── meta.json          ← repo identity, last scan, sync timestamps
-        ├── config.yml         ← exceptions and rule overrides
+        ├── config.yml         ← per-repo settings, exceptions and rule overrides
         ├── audit.log          ← full scan history (append-only)
         ├── last-scan.json     ← copy of latest scan
         ├── scans/             ← one JSON per scan, never overwritten
@@ -212,7 +219,7 @@ All scan data, configs and reports are stored outside your repository:
 Every scan is saved with a unique random ID (`s-a3f9b2c1`). This ID is timezone-neutral and is also used as `session_id` on the server for full traceability.
 
 ```bash
-scd store --scans                  # list all saved scans
+scd repo --scans                   # list all saved scans
 scd report --scan s-a3f9b2c1       # regenerate report from a specific scan
 ```
 
@@ -250,7 +257,7 @@ The scanner tracks user-controlled variables (HTTP input, CLI args) through your
 ↳ $id assigned from $_GET['id'] on line 30
 ```
 
-Supports PHP, Python, and JavaScript/TypeScript. Set `scan_mode: fast` in config.yml to skip taint analysis on very large codebases.
+Supports PHP, Python, and JavaScript/TypeScript. Set `scan_mode: fast` with `scd repo configure --scan-mode fast` to skip taint analysis on very large codebases.
 
 ### Deep analysis
 
@@ -263,7 +270,7 @@ Supports PHP, Python, and JavaScript/TypeScript. Set `scan_mode: fast` in config
 
 **Whole files are never sent.** Deep analysis requires scd-server with the Deep Analysis Pack. See [securecodebydesign.com](https://securecodebydesign.com) for subscription options.
 
-Set `trust_level: maximum_privacy` in `~/.scd/repos/{repoId}/config.yml` to disable all external API calls entirely.
+Set `trust_level: maximum_privacy` with `scd repo configure --trust-level maximum_privacy` to disable all external API calls entirely.
 
 ### Exception management
 
@@ -305,11 +312,12 @@ Per-repository configuration lives in `~/.scd/repos/{repoId}/config.yml` — out
 
 ```yaml
 trust_level: balanced        # maximum_privacy | balanced | maximum_analysis
-deep_delay_ms: 0             # ms delay between --deep requests
+scan_mode: full              # full (with taint analysis) | fast (regex only)
 block_on_critical: true
 block_on_high: true
-scan_mode: full              # full (with taint analysis) | fast (regex only)
 ```
+
+Edit with `scd repo configure --<option> <value>` or directly in the file.
 
 `trust_level` controls which external connections are permitted:
 
