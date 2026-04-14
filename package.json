@@ -6,7 +6,7 @@
   "license": "SEE LICENSE IN LICENSE.md",
   "homepage": "https://securecodebydesign.com",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   },
   "bin": {
     "scd": "./bin/scd.js"
