@@ -102,7 +102,8 @@ program
         hookType: opts.hook, files, findings, blocked,
         exceptions_applied: findings.filter(f => f.excepted).length,
         scanId,
-        noSync: opts.sync === false,
+        noSync:   opts.sync === false,
+        scanMode: config.scan_mode || 'full',
       });
 
       const { output, exitCode } = formatTerminal(findings, opts.hook, config, { verbose: opts.verbose });
@@ -211,10 +212,11 @@ program
     if (opts.audit !== false) {
       logScan(repoRoot, {
         hookType: 'manual', files, findings,
-        blocked: false,  // manual scan never blocks
+        blocked:  false,  // manual scan never blocks
         exceptions_applied: findings.filter(f => f.excepted).length,
         scanId,
-        noSync: opts.sync === false,
+        noSync:   opts.sync === false,
+        scanMode: config.scan_mode || 'full',
       });
     }
 
