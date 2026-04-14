@@ -21,8 +21,7 @@
   "scripts": {
     "test": "node test/run-poc.js",
     "link": "npm link",
-    "unlink": "npm unlink -g @activemind/scd",
-    "prepare": "chmod +x bin/scd.js"
+    "unlink": "npm unlink -g @activemind/scd"
   },
   "dependencies": {
     "commander": "^11.0.0"
