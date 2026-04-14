@@ -2,77 +2,108 @@
 
 ## Requirements
 
-- Node.js 18 or later
-- Git (for hook installation)
-- npm
+- Node.js 22 or later
+- Git
+- npm (included with Node.js)
 
 ---
 
-## Installation (npm link)
+## 1. Install Node.js
 
-This is the current installation method. Clone the repository and link it globally with npm.
+If you already have Node.js 22 or later installed, skip this step.
 
-```bash
-git clone git@github.com:activemindsolutions/scd.git
-cd scd
-npm install
-npm link
-scd --version        # verify
-```
+**macOS**
 
-To remove the dev link without touching store data:
+The recommended way is via [nvm](https://github.com/nvm-sh/nvm) (Node Version Manager):
 
 ```bash
-npm unlink -g @activemind/scd
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+# Restart your terminal, then:
+nvm install 22
+nvm use 22
+node --version   # should show v22.x.x
 ```
+
+Alternatively, download the installer directly from [nodejs.org](https://nodejs.org).
+
+**Linux**
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+# Restart your terminal, then:
+nvm install 22
+nvm use 22
+node --version
+```
+
+Or use your distribution's package manager — but make sure the version is 22 or later.
+Many distros ship an older version of Node.js by default.
+
+**Windows**
+
+Download and run the Node.js 22 installer from [nodejs.org](https://nodejs.org).
+Use the LTS version. The installer includes npm.
+
+After installation, verify in PowerShell or Command Prompt:
+
+```powershell
+node --version   # should show v22.x.x
+npm --version
+```
+
+> **PowerShell execution policy:** If npm scripts fail with a policy error, run this once
+> in an elevated PowerShell window:
+> ```powershell
+> Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+> ```
 
 ---
 
-## Other machines (install from tarball)
-
-> **Note:** Tarball distribution is planned but not yet fully verified. The steps below describe the intended workflow. Use npm link (above) in the meantime.
-
-On the machine where scd is cloned, pack a tarball:
+## 2. Install scd
 
 ```bash
-cd ~/Projects/scd
-npm pack
-# → activemind-scd-x.y.z.tgz
+npm install -g @activemind/scd
+scd --version   # verify
 ```
 
-Copy the `.tgz` to the target machine (AirDrop, scp, USB), then:
-
-```bash
-npm install -g activemind-scd-x.y.z.tgz
-scd --version
-```
-
-To uninstall (store data in `~/.scd` is kept):
+To uninstall (your scan history in `~/.scd` is kept):
 
 ```bash
 npm uninstall -g @activemind/scd
 ```
 
+> **Development install:** If you have cloned the repository and want to run from source:
+> ```bash
+> cd scd
+> npm install
+> npm link
+> ```
+> To remove the dev link: `npm unlink -g @activemind/scd`
+
 ---
 
-## First use on a new repo
+## 3. Set up a repository
+
+Run this inside any Git repository you want to scan:
 
 ```bash
 cd /path/to/your/project
-scd init             # register repo + install git hooks
-scd doctor           # verify setup
-scd scan             # run first scan
+scd init     # register repo + install git hooks
+scd doctor   # verify setup
+scd scan     # run your first scan
 ```
+
+`scd init` installs pre-commit and pre-push hooks via Git's `core.hooksPath` — no files
+are written to your repository.
 
 ---
 
-## Connecting to scd-server *(Premium)*
+## Connecting to scd-server *(Team / Professional)*
 
-scd-server provides team dashboards, exception approval, findings history,
-deep analysis, and CRA compliance reports. It runs in your own infrastructure —
-no data leaves your network.
+scd-server provides team dashboards, exception approval, findings history, deep analysis,
+and CRA compliance reports. It runs in your own infrastructure — no data leaves your network.
 
-Once your organisation's scd-server is up and running, connect your CLI to it:
+Once your organisation's scd-server is running, connect the CLI:
 
 ```bash
 scd configure --central-url http://your-server:3000
@@ -82,21 +113,16 @@ scd doctor    # verify connection
 
 > `localhost` is automatically normalised to `127.0.0.1` to avoid IPv6 resolution issues.
 
-### Optional: adjust timeouts
-
-Default timeouts work for most setups. Adjust if needed:
+**Adjust timeouts if needed** (defaults work for most setups):
 
 ```bash
-scd configure --server-timeout 30s    # API calls (default: 30s)
-scd configure --deep-timeout 20m      # Deep analysis (default: 20m)
+scd configure --server-timeout 30s    # regular API calls (default: 30s)
+scd configure --deep-timeout 20m      # deep analysis (default: 20m)
 ```
 
-### Sync existing scan history
-
-To push local scan history to a newly connected scd-server:
+**Push local scan history to a newly connected server:**
 
 ```bash
-cd /path/to/your/project
 scd sync --history
 ```
 
@@ -106,26 +132,26 @@ This is idempotent — safe to run multiple times.
 
 ## Store data
 
-All scan history, configs and reports are stored outside your repositories:
+All scan history, configuration, and reports are stored outside your repositories:
 
 ```
-~/.scd/                         # macOS / Linux
-%USERPROFILE%\.scd\            # Windows (e.g. C:\Users\YourName\.scd\)
-  config                        ← central URL, token, timeouts
+~/.scd/                          # macOS / Linux
+%USERPROFILE%\.scd\             # Windows (e.g. C:\Users\YourName\.scd\)
+  config                         ← central URL, token, timeouts
   repos/
     {repoId}/
-      meta.json                 ← repo identity, last scan, timestamps
-      config.yml                ← exceptions and rule configuration
-      audit.log                 ← full scan history (append-only)
-      last-scan.json            ← latest scan cache
-      scans/                    ← one JSON per scan (never overwritten)
-      reports/                  ← generated HTML/MD/JSON reports
+      meta.json                  ← repo identity, last scan, timestamps
+      config.yml                 ← exceptions and rule configuration
+      audit.log                  ← full scan history (append-only)
+      last-scan.json             ← latest scan cache
+      scans/                     ← one JSON per scan (never overwritten)
+      reports/                   ← generated HTML/MD/JSON reports
+      exports/                   ← exported json-files from scd export-findings command
 ```
 
-**Uninstalling the `scd` binary does not remove store data.**
-This is intentional — your scan history is preserved.
+Uninstalling `scd` does not remove store data — your scan history is preserved.
 
-To inspect or clean up store data:
+**Inspect or clean up store data:**
 
 ```bash
 scd store --show              # info for current repo
@@ -134,7 +160,7 @@ scd store --verify --clean    # interactive cleanup
 scd remove                    # remove current repo from store
 ```
 
-To completely remove all store data (irreversible):
+**Remove all store data (irreversible):**
 
 ```bash
 # macOS / Linux
@@ -148,19 +174,18 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.scd"
 
 ## Shell aliases
 
-If you previously had aliases set up that conflict with the global `scd` binary,
-remove them from your shell configuration:
+If you have existing aliases that conflict with the `scd` command, remove them from your
+shell configuration (`~/.zshrc`, `~/.bashrc`):
 
 ```bash
-# Remove from ~/.zshrc or ~/.bashrc — lines like:
+# Remove lines like:
 alias scd=...
-alias sc=...
 ```
 
-After editing, reload your shell:
+Then reload your shell:
 
 ```bash
 source ~/.zshrc   # or ~/.bashrc
 ```
 
-On Windows, check your PowerShell profile (`$PROFILE`) for any conflicting aliases.
+On Windows, check your PowerShell profile (`$PROFILE`) for conflicting aliases.
