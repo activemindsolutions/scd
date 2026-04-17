@@ -5,6 +5,26 @@
  */
 
 const { Command } = require('commander');
+
+/**
+ * Open a URL or file path in the default browser/application.
+ * Handles platform differences correctly:
+ *   macOS  → open
+ *   Linux  → xdg-open
+ *   Windows → start with empty title arg to avoid new terminal window
+ */
+function openInBrowser(target) {
+  const { spawn } = require('child_process');
+  if (process.platform === 'darwin') {
+    spawn('open', [target], { detached: true, stdio: 'ignore' }).unref();
+  } else if (process.platform === 'win32') {
+    // 'start' requires shell:true and empty string as window title
+    // to avoid opening a new terminal window instead of the browser
+    spawn('cmd', ['/c', 'start', '', target], { detached: true, stdio: 'ignore', shell: false }).unref();
+  } else {
+    spawn('xdg-open', [target], { detached: true, stdio: 'ignore' }).unref();
+  }
+}
 const { scanSecrets } = require('../lib/scanner-secrets');
 const { scanFull }    = require('../lib/scanner-full');
 const { formatTerminal } = require('../lib/output-terminal');
@@ -652,11 +672,7 @@ program
           console.log('\x1b[36m⇢  Serving report: ' + openUrl + '\x1b[0m');
         }
 
-        const { execSync } = require('child_process');
-        const openCmd = process.platform === 'darwin' ? 'open'
-                      : process.platform === 'win32'  ? 'start'
-                      : 'xdg-open';
-        try { execSync(openCmd + ' "' + openUrl + '"'); } catch {}
+        openInBrowser(openUrl);
         console.log('\x1b[90m   Press any key to stop the server…\x1b[0m');
       });
 
@@ -694,11 +710,7 @@ program
     }
 
     if (opts.open) {
-      const { execSync } = require('child_process');
-      const openCmd = process.platform === 'darwin' ? 'open'
-                    : process.platform === 'win32'  ? 'start'
-                    : 'xdg-open';
-      try { execSync(openCmd + ' "' + outPath + '"'); } catch(e) { /* ignore */ }
+      openInBrowser(outPath);
     }
 
     console.log();
