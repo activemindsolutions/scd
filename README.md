@@ -59,7 +59,8 @@ npm install -g @activemind/scd
 scd --version
 ```
 
-See [INSTALL.md](INSTALL.md) for platform-specific Node.js setup and advanced options.
+See [INSTALL.md](INSTALL.md) for platform-specific Node.js setup, advanced options, and
+[installation troubleshooting](INSTALL.md#troubleshooting).
 
 ---
 
