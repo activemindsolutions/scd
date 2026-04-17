@@ -1067,6 +1067,167 @@ const repoConfigureCmd = new Command('configure')
   });
 
 
+// ── scd repo hooks ──────────────────────────────────────────────────────────
+const repoHooksCmd = new Command('hooks')
+  .description('Show or manage git hook status for the current repo')
+  .option('--disable', 'Disable git hooks for this repo (requires --reason)')
+  .option('--enable',  'Re-enable git hooks for this repo')
+  .option('--reason <text>', 'Required reason when disabling hooks (logged to audit trail)')
+  .action((opts) => {
+    const { getHookStatus, disableHooks, enableHooks } = require('../lib/hooks-manager');
+    const { logHooks } = require('../lib/audit');
+    const repoRoot = getRepoRoot();
+
+    const CYAN  = '\x1b[36m';
+    const GREEN = '\x1b[32m';
+    const RED   = '\x1b[31m';
+    const DIM   = '\x1b[90m';
+    const BOLD  = '\x1b[1m';
+    const YELLOW = '\x1b[33m';
+    const RESET = '\x1b[0m';
+
+    // ── disable ──────────────────────────────────────────────────────────
+    if (opts.disable) {
+      if (!opts.reason || opts.reason.trim().length < 5) {
+        console.error(`\n${RED}✗ --reason is required when disabling hooks.${RESET}`);
+        console.error(`  Example: scd repo hooks --disable --reason "demo repo, no real secrets"\n`);
+        process.exit(1);
+      }
+      const current = getHookStatus(repoRoot);
+      if (current.status === 'disabled') {
+        console.log(`\n${YELLOW}⚠  Hooks are already disabled for this repo.${RESET}\n`);
+        process.exit(0);
+      }
+      try {
+        disableHooks(repoRoot, opts.reason);
+        logHooks(repoRoot, { action: 'disable', reason: opts.reason.trim(), noSync: false });
+        console.log(`\n${YELLOW}⚠  Git hooks disabled for this repo.${RESET}`);
+        console.log(`  ${DIM}Reason: ${opts.reason.trim()}${RESET}`);
+        console.log(`  ${DIM}This action has been logged to the audit trail.${RESET}`);
+        console.log(`  ${DIM}Re-enable with: scd repo hooks --enable${RESET}\n`);
+      } catch (err) {
+        console.error(`\n${RED}✗ Failed to disable hooks: ${err.message}${RESET}\n`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    // ── enable ───────────────────────────────────────────────────────────
+    if (opts.enable) {
+      const current = getHookStatus(repoRoot);
+      if (current.status === 'enabled' && current.source !== 'local') {
+        console.log(`\n${GREEN}✓ Hooks are already enabled (via global config).${RESET}\n`);
+        process.exit(0);
+      }
+      try {
+        enableHooks(repoRoot);
+        logHooks(repoRoot, { action: 'enable', reason: 'manually re-enabled', noSync: false });
+        console.log(`\n${GREEN}✓ Git hooks re-enabled for this repo.${RESET}`);
+        console.log(`  ${DIM}This action has been logged to the audit trail.${RESET}\n`);
+      } catch (err) {
+        console.error(`\n${RED}✗ Failed to enable hooks: ${err.message}${RESET}\n`);
+        process.exit(1);
+      }
+      return;
+    }
+
+    // ── show (default) ───────────────────────────────────────────────────
+    const status = getHookStatus(repoRoot);
+    console.log(`\n${CYAN}${BOLD}Git hook status${RESET}`);
+    console.log(`${DIM}${'─'.repeat(40)}${RESET}`);
+    console.log(`${DIM}Repo: ${repoRoot}${RESET}\n`);
+
+    const statusLabel = status.status === 'enabled'
+      ? `${GREEN}enabled${RESET}`
+      : status.status === 'disabled'
+        ? `${YELLOW}disabled${RESET}`
+        : status.status === 'global-broken'
+          ? `${RED}disabled (global config broken)${RESET}`
+          : status.status === 'not-installed'
+            ? `${RED}not installed${RESET}`
+            : `${DIM}unknown${RESET}`;
+
+    console.log(`  Status:  ${statusLabel}`);
+    if (status.hooksPath) {
+      console.log(`  Path:    ${DIM}${status.hooksPath}${RESET}`);
+    }
+    if (status.source) {
+      console.log(`  Source:  ${DIM}${status.source} config${RESET}`);
+    }
+    console.log('');
+    if (status.status === 'disabled') {
+      console.log(`  ${DIM}Re-enable with: scd repo hooks --enable${RESET}`);
+    } else if (status.status === 'global-broken') {
+      console.log(`  ${RED}Global git config has core.hooksPath set to /dev/null.${RESET}`);
+      console.log(`  ${DIM}Fix with: git config --global core.hooksPath ~/.scd/hooks${RESET}`);
+      console.log(`  ${DIM}Or re-enable for this repo only: scd repo hooks --enable${RESET}`);
+    } else if (status.status === 'enabled') {
+      console.log(`  ${DIM}Disable for this repo: scd repo hooks --disable --reason "<reason>"${RESET}`);
+    } else {
+      console.log(`  ${DIM}Install with: scd init${RESET}`);
+    }
+    console.log('');
+  });
+
+
+// ── scd hooks ────────────────────────────────────────────────────────────────
+program
+  .command('hooks')
+  .description('Show git hook status for all known repos')
+  .action(() => {
+    const store  = require('../lib/store');
+    const { getHookStatus } = require('../lib/hooks-manager');
+
+    const CYAN  = '\x1b[36m';
+    const GREEN = '\x1b[32m';
+    const RED   = '\x1b[31m';
+    const DIM   = '\x1b[90m';
+    const BOLD  = '\x1b[1m';
+    const YELLOW = '\x1b[33m';
+    const RESET = '\x1b[0m';
+
+    const repos = store.listRepos().filter(r => !r.removed);
+    console.log(`\n${CYAN}${BOLD}Git hook status — all repos${RESET}`);
+    console.log(`${DIM}${'─'.repeat(60)}${RESET}\n`);
+
+    if (!repos.length) {
+      console.log(`  ${DIM}No repos registered. Run scd init in a project.${RESET}\n`);
+      return;
+    }
+
+    const nameW = 28, statusW = 14;
+    console.log(
+      `  ${DIM}${'Repo'.padEnd(nameW)}${'Status'.padEnd(statusW)}Source${RESET}`
+    );
+    console.log(`  ${DIM}${'─'.repeat(56)}${RESET}`);
+
+    for (const repo of repos) {
+      const repoPath = repo.localPath || repo.root;
+      if (!repoPath) continue;
+      const status = getHookStatus(repoPath);
+      const name   = (repo.name || repoPath.split('/').pop() || '?').slice(0, nameW - 2).padEnd(nameW);
+      // Skip repos that are missing or not git repos — not relevant for hook management
+      if (status.status === 'missing' || status.status === 'not-a-git-repo') continue;
+
+      const statusLabel = status.status === 'enabled'
+        ? (GREEN + 'enabled' + RESET).padEnd(statusW + GREEN.length + RESET.length)
+        : status.status === 'disabled'
+          ? (YELLOW + 'disabled' + RESET).padEnd(statusW + YELLOW.length + RESET.length)
+          : status.status === 'global-broken'
+            ? (RED + 'global broken' + RESET).padEnd(statusW + RED.length + RESET.length)
+            : (DIM + status.status + RESET).padEnd(statusW + DIM.length + RESET.length);
+      const source = status.source ? `${DIM}${status.source}${RESET}` : '';
+      console.log(`  ${DIM}${name}${RESET}${statusLabel}${source}`);
+    }
+    const hasBroken = repos.some(repo => { const p = repo.localPath || repo.root; return p && getHookStatus(p).status === 'global-broken'; });
+    if (hasBroken) {
+      console.log(`  ${RED}⚠  Global git config has core.hooksPath set to /dev/null.${RESET}`);
+      console.log(`  ${DIM}Fix: git config --global core.hooksPath ~/.scd/hooks${RESET}\n`);
+    }
+    console.log(`  ${DIM}Manage hooks per repo: scd repo hooks [--disable|--enable]${RESET}\n`);
+  });
+
+
 // ── scd list ────────────────────────────────────────────────────────────────
 program
   .command('list')
@@ -1389,6 +1550,7 @@ const repoCmd = new Command('repo')
   });
 
 repoCmd.addCommand(repoConfigureCmd);
+repoCmd.addCommand(repoHooksCmd);
 program.addCommand(repoCmd);
 
 
