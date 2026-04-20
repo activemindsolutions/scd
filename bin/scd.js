@@ -753,7 +753,8 @@ program
   .option('--block-on-critical <value>', 'Set global default block-on-critical (true|false)')
   .action((opts) => {
     const { getCentralUrl, setCentralUrl, removeCentralUrl, getCentralToken, setCentralToken, removeCentralToken,
-            getServerTimeout, setServerTimeout, getDeepTimeout, setDeepTimeout, parseTimeoutArg } =
+            getServerTimeout, setServerTimeout, getDeepTimeout, setDeepTimeout, parseTimeoutArg,
+            GLOBAL_CONFIG } =
       require('../lib/global-config');
 
     const CYAN  = '\x1b[36m';
