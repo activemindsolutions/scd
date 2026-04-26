@@ -38,11 +38,8 @@ const program = new Command();
 // ── Push queue flush helper ───────────────────────────────────────────────
 // Awaitable flush — called before process.exit() in scan commands.
 // Non-blocking: resolves immediately if no central URL or empty queue.
-let _flushInProgress = false;
-
 async function tryFlush(opts = {}) {
   if (opts.noSync) return;  // --no-sync: skip push to scd-server
-  _flushInProgress = true;
   try {
     const { getCentralUrl } = require('../lib/global-config');
     const centralUrl = getCentralUrl();
@@ -59,7 +56,6 @@ async function tryFlush(opts = {}) {
       console.log('\x1b[90m     Contact your scd-server administrator.\x1b[0m');
     }
   } catch { /* non-fatal */ }
-  finally { _flushInProgress = false; }
 }
 
 const pkg = require('../package.json');
@@ -146,7 +142,7 @@ program
     // 'scan' in the script path), then collect everything after it that is
     // not an option flag (-x / --x) and not the VALUE of a known option flag.
     const knownOptionFlags = new Set([
-      '--hook', '--lang', '--severity', '--rule', '--format', '--output', '--deep-delay'
+      '--hook', '--lang', '--severity', '--rule', '--format', '--output'
     ]);
     const allArgv   = process.argv;
     let   scanIdx   = -1;
@@ -1873,7 +1869,6 @@ setImmediate(() => {
 
     const { flush, queueSize } = require('../lib/push-queue');
     if (queueSize() === 0) return;
-    if (_flushInProgress) return;  // tryFlush already handling this — avoid double send
 
     // Pass repoRoot so meta includes repo and installation identity
     const repoRoot = (() => {
