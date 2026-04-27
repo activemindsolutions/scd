@@ -30,7 +30,7 @@ const { scanFull }    = require('../lib/scanner-full');
 const { formatTerminal } = require('../lib/output-terminal');
 const { getChangedFiles } = require('../lib/git-utils');
 const { loadConfig, getRepoRoot } = require('../lib/config');
-const { resolveTargetContext, findGitRoot } = require('../lib/scan-context');
+const { resolveTargetContext, findGitRoot, checkRepoOverlap } = require('../lib/scan-context');
 const { logScan } = require('../lib/audit');
 const { saveCache, loadCache, cacheAge, makeScanId } = require('../lib/scan-cache');
 
@@ -99,6 +99,9 @@ program
 
     // ── Hook-läge (anropat av git pre-commit/pre-push) ──────────────────
     if (opts.hook) {
+      // Check for overlapping repos — warn but don't block (hooks are non-interactive)
+      if (repoRoot) await checkRepoOverlap(repoRoot, { interactive: false });
+
       // Hook mode: git-tracked changed files only — vendor code never appears here
       const files = await getChangedFiles(opts.hook);
       if (files.length === 0) {
@@ -178,6 +181,17 @@ program
       repoRoot    = ctx.repoRoot    || cwdRepoRoot;
       skipLogging = ctx.skipLogging;
     }
+    // ── Check for overlapping scd repos ────────────────────────────────
+    if (!skipLogging && repoRoot) {
+      const overlap = await checkRepoOverlap(repoRoot, { interactive: true });
+      if (overlap.cancelled) {
+        console.log('\x1b[90m  Scan cancelled.\x1b[0m\n');
+        process.exit(0);
+      }
+      if (overlap.skipLogging) skipLogging = true;
+    }
+    // ────────────────────────────────────────────────────────────────────
+
     // Propagate skipLogging into opts so tryFlush is also suppressed
     if (skipLogging) opts = { ...opts, noSync: true, noAudit: true };
     // ─────────────────────────────────────────────────────────────────────
