@@ -2,6 +2,33 @@
 
 ---
 
+## v1.2.2 (2026-04-27)
+
+This release detects and warns when scanning from a repo that overlaps with another scd repository.
+
+**Overlapping repo detection.** Running `scd scan` from a directory that is a parent or child of another known scd repo now triggers a warning before the scan starts. The warning describes the overlap (parent or child), explains that findings may be duplicated, and offers three choices: continue anyway, scan without logging, or cancel. In hook mode (pre-commit/pre-push), where interactive prompts are not possible, scd warns to the terminal and continues automatically — hooks must never block a commit silently.
+
+The detection reads `localPath` from all known repos in `~/.scd/repos/` and compares path hierarchies. Both manual scans and git hooks are covered.
+
+---
+
+## v1.2.1 (2026-04-27)
+
+This release fixes a long-standing bug where scanning a file outside the current repo would contaminate the wrong repo with findings, or silently create a spurious repo entry.
+
+**Scan context resolved from target, not CWD.** Previously, `scd scan` always used the current working directory as the repo context, regardless of where the scan target was. Scanning a file in another repo (`scd scan ~/other-project/file.js`) would log findings under the wrong repo. Running `scd scan` from the home directory would create a new repo entry named after the user's home folder.
+
+scd now determines the correct context from the scan target itself. Four cases are handled:
+
+- **Target inside CWD repo** — no change, normal flow.
+- **Target in a different git repo** — prompts with four choices: log to target repo (recommended), log to CWD repo, scan without logging, or cancel.
+- **Targets span multiple repos** — warns and uses CWD if available.
+- **Target outside all git repos** — prompts: scan without logging, log to CWD repo, or cancel.
+
+`--no-audit` and `--no-sync` skip the context check entirely — the user has already opted out of logging. When `skipLogging` is active, a notice is shown in the scan header.
+
+---
+
 ## v1.2.0 (2026-04-17)
 
 This release adds per-repo hook management with full audit trail, and fixes the browser-open bug on Windows.
