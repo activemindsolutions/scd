@@ -30,6 +30,7 @@ const { scanFull }    = require('../lib/scanner-full');
 const { formatTerminal } = require('../lib/output-terminal');
 const { getChangedFiles } = require('../lib/git-utils');
 const { loadConfig, getRepoRoot } = require('../lib/config');
+const { resolveTargetContext, findGitRoot } = require('../lib/scan-context');
 const { logScan } = require('../lib/audit');
 const { saveCache, loadCache, cacheAge, makeScanId } = require('../lib/scan-cache');
 
@@ -85,8 +86,10 @@ program
   .option('--vendor-only',     'Scan only vendor/dependency code (supply chain audit)')
   .option('--verbose',           'Show full file-grouped and rule-grouped output (default: compact summary)')
   .action(async (targets, opts) => {
-    const repoRoot = getRepoRoot();
-    const config   = loadConfig(repoRoot);
+    const cwdRepoRoot = getRepoRoot();  // provisional — may be overridden by target context
+    let   repoRoot    = cwdRepoRoot;
+    let   skipLogging = false;
+    const config      = loadConfig(repoRoot);
 
     // Validate vendor flags
     if (opts.includeVendor && opts.vendorOnly) {
@@ -163,6 +166,22 @@ program
     const targetList = rawTargets.length > 0 ? rawTargets : ['.'];
     const scanTarget = targetList.length === 1 ? targetList[0] : targetList.join(', ');
 
+    // ── Resolve repo context from target, not just CWD ──────────────────
+    // Prevents contaminating the wrong repo when scanning files outside CWD.
+    // --no-audit and --no-sync bypass this check (user explicitly opted out of logging).
+    if (!opts.noAudit && !opts.noSync) {
+      const ctx = await resolveTargetContext(targetList, cwdRepoRoot);
+      if (ctx.cancelled) {
+        console.log('\x1b[90m  Scan cancelled.\x1b[0m\n');
+        process.exit(0);
+      }
+      repoRoot    = ctx.repoRoot    || cwdRepoRoot;
+      skipLogging = ctx.skipLogging;
+    }
+    // Propagate skipLogging into opts so tryFlush is also suppressed
+    if (skipLogging) opts = { ...opts, noSync: true, noAudit: true };
+    // ─────────────────────────────────────────────────────────────────────
+
     // Show discovering status — discoverFiles reads all files from disk which can take a moment
     process.stderr.write('\r\x1b[90m Discovering files…\x1b[0m');
 
@@ -202,7 +221,9 @@ program
     console.log(`\x1b[36m║${ ' '.repeat(_pl2)}${_vt2}${ ' '.repeat(_pr2)}║\x1b[0m`);
     console.log(`\x1b[36m╚══════════════════════════════════════════╝\x1b[0m`);
     console.log(`\x1b[90m Manual scan${langLabel}${vendorLabel}: ${scanTarget}\x1b[0m`);
-    console.log(`\x1b[90m ${files.length} file(s) found${skipped.length > 0 ? ` · ${skipped.length} skipped` : ''}\x1b[0m\n`);
+    console.log(`\x1b[90m ${files.length} file(s) found${skipped.length > 0 ? ` · ${skipped.length} skipped` : ''}\x1b[0m`);
+    if (skipLogging) console.log(`\x1b[33m ↷ Results not saved — target is outside any known repository\x1b[0m`);
+    console.log();
 
     if (files.length === 0) {
       console.log('\x1b[33m No supported files found.\x1b[0m');
@@ -230,7 +251,7 @@ program
 
     // Audit (unless --no-audit)
     if (opts.audit !== false) {
-      logScan(repoRoot, {
+      if (!skipLogging) logScan(repoRoot, {
         hookType: 'manual', files, findings,
         blocked:  false,  // manual scan never blocks
         exceptions_applied: findings.filter(f => f.excepted).length,
@@ -338,7 +359,7 @@ program
     }
 
     // Cache findings (including deep results if available)
-    saveCache(repoRoot, {
+    if (!skipLogging) saveCache(repoRoot, {
       findings,
       target:     scanTarget,
       totalFiles: files.length,
