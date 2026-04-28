@@ -416,26 +416,168 @@ program
   });
 
 program
-  .command('accept [findingId]')
-  .description('Accept a finding as an acceptable risk (requires team-lead approval via scd-server)')
-  .option('--reason <text>', 'Reason why this risk is accepted (required)')
-  .option('--tag <tag>',     'Optional tag for filtering (e.g. false_positive, out_of_scope, third_party)')
-  .action(async (findingId, opts) => {
-    const { addExceptionById } = require('../lib/exception-manager');
+  .command('approve')
+  .description('Mark a finding as an accepted risk exception (requires team-lead approval via scd-server)')
+  .option('--rule <id>',    'Rule ID (e.g. PY-INJ-001)')
+  .option('--file <path>',  'File path')
+  .option('--line <n>',     'Line number')
+  .option('--reason <text>','Reason why this risk is accepted (required)')
+  .action(async (opts) => {
+    const { addException } = require('../lib/exception-manager');
     const repoRoot = getRepoRoot();
-    await addExceptionById(repoRoot, findingId, { ...opts }, 'exception');
+    await addException(repoRoot, opts, 'exception');
   });
 
 
 program
-  .command('ignore [findingId]')
+  .command('ignore')
   .description('Ignore a finding (requires team-lead approval via scd-server)')
-  .option('--reason <text>', 'Reason for ignoring this finding (required)')
-  .option('--tag <tag>',     'Optional tag for filtering (e.g. false_positive, out_of_scope, third_party)')
-  .action(async (findingId, opts) => {
-    const { addExceptionById } = require('../lib/exception-manager');
+  .option('--rule <id>',    'Rule ID (e.g. PY-PATH-001)')
+  .option('--file <path>',  'File path')
+  .option('--line <n>',     'Line number')
+  .option('--reason <text>','Reason for ignoring this finding (required)')
+  .option('--tag <tag>',    'Optional tag for filtering (e.g. false_positive, out_of_scope, third_party)')
+  .action(async (opts) => {
+    const { addException } = require('../lib/exception-manager');
     const repoRoot = getRepoRoot();
-    await addExceptionById(repoRoot, findingId, { ...opts }, 'ignore');
+    await addException(repoRoot, opts, 'ignore');
+  });
+
+
+program
+  .command('findings')
+  .description('List findings from the last scan (default: open/unhandled only)')
+  .option('--all',              'Show all findings including excepted and resolved')
+  .option('--severity <level>', 'Filter by severity: critical, high, medium, exposure')
+  .option('--rule <id>',        'Filter by rule ID (e.g. JS-ERR-002)')
+  .option('--scan <id>',        'Load a specific scan by ID instead of last scan')
+  .option('--excepted',          'Show only excepted findings')
+  .action(async (opts) => {
+    const { loadCache, loadScan, cacheAge } = require('../lib/scan-cache');
+    const repoRoot = getRepoRoot();
+
+    const RED    = '\x1b[31m';
+    const YELLOW = '\x1b[33m';
+    const BLUE   = '\x1b[34m';
+    const GREEN  = '\x1b[32m';
+    const BOLD   = '\x1b[1m';
+    const DIM    = '\x1b[90m';
+    const CYAN   = '\x1b[36m';
+    const RESET  = '\x1b[0m';
+
+    const SEV_ICON  = { CRITICAL: '🔴', HIGH: '🟠', MEDIUM: '🟡', EXPOSURE: '🔷', INFO: '⬜' };
+    const SEV_COLOR = { CRITICAL: RED, HIGH: YELLOW, MEDIUM: YELLOW, EXPOSURE: BLUE, INFO: DIM };
+
+    // Load scan data
+    let scan = null;
+    let isHistoric = false;
+    if (opts.scan) {
+      scan = loadScan(repoRoot, opts.scan);
+      isHistoric = true;
+      if (!scan) {
+        console.error(`\n\x1b[31m❌ Scan not found: ${opts.scan}\x1b[0m`);
+        console.error(`${DIM}   Run scd repo --scans to list available scans\x1b[0m\n`);
+        process.exit(1);
+      }
+    } else {
+      scan = loadCache(repoRoot);
+      if (!scan) {
+        console.error(`\n\x1b[31m❌ No scan found for this repo.\x1b[0m`);
+        console.error(`${DIM}   Run scd scan first\x1b[0m\n`);
+        process.exit(1);
+      }
+    }
+
+    let findings = scan.findings || [];
+    const showAll    = opts.all || opts.excepted;
+    const showExcepted = opts.excepted;
+    const scanAge = scan.scanDate ? cacheAge(scan.scanDate) : 'unknown';
+
+    // Apply --open filter (default) — exclude excepted and resolved
+    if (!showAll) {
+      findings = findings.filter(f => !f.excepted && !f.resolved);
+    }
+
+    // Apply --excepted filter
+    if (showExcepted) {
+      findings = findings.filter(f => f.excepted);
+    }
+
+    // Apply --severity filter
+    if (opts.severity) {
+      const sev = opts.severity.toUpperCase();
+      findings = findings.filter(f => f.severity === sev);
+    }
+
+    // Apply --rule filter
+    if (opts.rule) {
+      findings = findings.filter(f => f.ruleId === opts.rule);
+    }
+
+    // Header
+    const scanLabel = opts.scan ? `Scan ${scan.scanId}` : `Last scan`;
+    const modeLabel = showExcepted ? 'excepted findings' : showAll ? 'all findings' : 'open findings only';
+    console.log(`\n${BOLD}Findings${RESET}  ${DIM}${scanLabel} · ${scanAge} · ${modeLabel}${RESET}`);
+    if (!showAll) {
+      console.log(`${DIM}  Showing unhandled findings. Use --all to include excepted and resolved.${RESET}`);
+    }
+    if (isHistoric && opts.open) {
+      console.log(`${YELLOW}  Note: --open on a historic scan reflects exception status at scan time.${RESET}`);
+    }
+    console.log(`${DIM}${'─'.repeat(64)}${RESET}\n`);
+
+    if (findings.length === 0) {
+      if (showExcepted) {
+        console.log(`${DIM}  No excepted findings in this scan.${RESET}\n`);
+      } else if (!showAll) {
+        console.log(`${GREEN}  ✅ No open findings.${RESET}${opts.severity || opts.rule ? '' : ' All findings are excepted or resolved.'}\n`);
+      } else {
+        console.log(`${DIM}  No findings match the current filters.${RESET}\n`);
+      }
+      return;
+    }
+
+    // Group by file
+    const byFile = {};
+    for (const f of findings) {
+      if (!byFile[f.filePath]) byFile[f.filePath] = [];
+      byFile[f.filePath].push(f);
+    }
+
+    const SEV_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, EXPOSURE: 3, INFO: 4 };
+
+    for (const [filePath, filefindings] of Object.entries(byFile).sort()) {
+      console.log(`  ${BOLD}${filePath}${RESET}`);
+      const sorted = [...filefindings].sort((a, b) =>
+        (SEV_ORDER[a.severity] ?? 9) - (SEV_ORDER[b.severity] ?? 9)
+      );
+      for (const f of sorted) {
+        const icon  = SEV_ICON[f.severity]  || '⬜';
+        const color = SEV_COLOR[f.severity] || DIM;
+        const fid   = f.findingId ? `  ${DIM}${f.findingId}${RESET}` : '';
+        const exc   = f.excepted  ? `  ${DIM}[excepted]${RESET}` : '';
+        const res   = f.resolved  ? `  ${DIM}[resolved]${RESET}` : '';
+        const line  = f.line      ? `:${f.line}` : '';
+        console.log(`    ${icon}  ${color}${f.name}${RESET}  ${DIM}${f.ruleId}${line}${RESET}${fid}${exc}${res}`);
+        if (f.snippet && f.snippet !== '[REDACTED]') {
+          const snip = f.snippet.trim().slice(0, 80);
+          console.log(`       ${DIM}${snip}${snip.length === 80 ? '…' : ''}${RESET}`);
+        }
+      }
+      console.log('');
+    }
+
+    // Summary + hints
+    const counts = {};
+    for (const f of findings) counts[f.severity] = (counts[f.severity] || 0) + 1;
+    const parts = ['CRITICAL','HIGH','MEDIUM','EXPOSURE']
+      .filter(s => counts[s])
+      .map(s => `${SEV_ICON[s]} ${counts[s]} ${s.toLowerCase()}`);
+    console.log(`${DIM}  ${findings.length} finding(s)${parts.length ? ': ' + parts.join('  ') : ''}${RESET}`);
+    if (!showAll && !showExcepted && findings.length > 0) {
+      console.log(`${DIM}  scd accept <finding-id> --reason "..."   or   scd ignore <finding-id> --reason "..."${RESET}`);
+    }
+    console.log('');
   });
 
 
