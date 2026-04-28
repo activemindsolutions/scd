@@ -18,6 +18,7 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 - **HTML, Markdown and JSON reports** with fix guidance for each finding
 - **Deep analysis** – optional AI-powered analysis via scd-server; requires the Deep Analysis Pack (Premium)
 - **Per-scan storage** – every scan saved with a unique random ID (`s-a3f9b2c1`), never overwritten; regenerate reports from any historical scan
+- **Finding IDs** – every finding gets a stable ID (`f-a1b2c3d4`) shown in scan output, reports and export — use directly with `scd accept` and `scd ignore`
 - **Exception management** – reviewed exceptions tracked in config, never as code comments
 - **Exception sync** – pull team-lead approvals from scd-server, sync rejected back with reason
 - **Audit trail** – append-only scan history per repository
@@ -116,15 +117,26 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 | `scd export-findings --severity critical` | Filter exported findings by severity |
 | `scd export-findings --scan <id>` | Export from a specific saved scan |
 
+### Findings
+
+| Command | Description |
+|---|---|
+| `scd findings` | List open (unhandled) findings from last scan |
+| `scd findings --all` | All findings including excepted and resolved |
+| `scd findings --excepted` | Only excepted findings |
+| `scd findings --severity critical` | Filter by severity |
+| `scd findings --rule <id>` | Filter by rule ID |
+| `scd findings --scan <id>` | Load a specific historic scan |
+
 ### Exception management
 
 | Command | Description |
 |---|---|
-| `scd approve --rule <id> --file <path> --line <n> --reason <text>` | Create accepted-risk exception (pending team-lead approval) |
-| `scd ignore --rule <id> --file <path> --line <n> --reason <text>` | Create general ignore (pending team-lead approval) |
-| `scd ignore ... --tag <text>` | Optional free-text tag, e.g. `false_positive`, `out_of_scope` |
+| `scd accept <finding-id> --reason <text>` | Accept finding as acceptable risk (pending team-lead approval) |
+| `scd accept <finding-id> --tag <text>` | Optional tag, e.g. `false_positive`, `out_of_scope` |
+| `scd ignore <finding-id> --reason <text>` | Ignore a finding (pending team-lead approval) |
 | `scd sync` | Pull approved/rejected exceptions from scd-server *(Premium)* |
-| `scd exceptions` | List all local exceptions |
+| `scd exceptions` | List all local exceptions with finding IDs |
 | `scd exceptions --list rejected` | List only rejected exceptions |
 | `scd exceptions --list pending\|approved\|all` | Filter by status |
 | `scd resolve --rejected <id>` | Remove a rejected exception and notify server |
@@ -277,16 +289,17 @@ Set `trust_level: maximum_privacy` with `scd repo configure --trust-level maximu
 
 ### Exception management
 
-Exceptions for accepted findings are managed in the store config — never as source code comments.
+Exceptions are managed by finding ID — shown in scan output, reports, and `scd findings`. Never edit source code comments.
 
 ```bash
-# Accept a risk (requires team-lead approval via scd-server)
-scd approve --rule PHP-INJ-002 --file src/db.php --line 45 \
-  --reason "Parameterized internally, validated input only"
+# View open findings with their IDs
+scd findings
 
-# Mark as general ignore with optional tag
-scd ignore --rule FRONT-005 --file dist/app.js --line 1 \
-  --reason "Source maps intentionally included in staging" \
+# Accept a risk (requires team-lead approval via scd-server)
+scd accept f-a1b2c3d4 --reason "Parameterized internally, validated input only"
+
+# Ignore a finding (false positive, out of scope etc.)
+scd ignore f-a1b2c3d4 --reason "Source maps intentionally included in staging" \
   --tag false_positive
 
 # Pull approvals/rejections from team server

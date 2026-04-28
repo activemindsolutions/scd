@@ -2,6 +2,29 @@
 
 ---
 
+## v1.2.5 (2026-04-28)
+
+This release overhauls exception management with finding IDs, introduces the `scd findings` command, and fixes several bugs in the exception and push-queue subsystems.
+
+**Finding IDs.** Every finding now has a stable, deterministic ID (`f-a1b2c3d4`) derived from its content. For findings where source code is redacted (secrets rules), the ID is derived from rule ID, file path and line number instead. Finding IDs appear in `scd scan --verbose`, `scd findings`, HTML and JSON reports, `scd export-findings`, and `scd exceptions`. They are also sent to scd-server for future server-side reference.
+
+**`scd accept` and `scd ignore` by finding ID.** Both commands now take a finding ID as their primary argument: `scd accept f-a1b2c3d4 --reason "..."`. This eliminates the previous error-prone `--rule --file --line` syntax that made it easy to create exceptions for the wrong finding. The commands look up the finding in the last scan cache and check for duplicates before creating an exception. `scd approve` has been removed — `scd accept` is the correct term for a developer accepting a risk, since approval by a team lead happens separately in scd-server.
+
+**`scd findings` command.** Shows findings from the last scan without re-scanning. Default shows only open (unhandled) findings. Options:
+- `--all` — include excepted and resolved findings
+- `--excepted` — show only excepted findings
+- `--severity <level>` — filter by severity
+- `--rule <id>` — filter by rule ID
+- `--scan <id>` — load a specific historic scan
+
+Each finding shows its ID for direct use with `scd accept` and `scd ignore`.
+
+**Push-queue stale logic fixed.** Network errors and HTTP 503 responses (server temporarily down) no longer increment the attempts counter. Events now stay in the queue until the server comes back online, or until they are 30 days old. Previously, 10 failed attempts in quick succession would permanently mark events as stale, causing exception requests to disappear silently when the server was briefly unavailable.
+
+**Exception matching bug fixed.** Exceptions created for secrets findings (where source code is redacted) previously never matched because `line_hash` could not be verified against an empty `lineRaw`. scd now falls back to matching on rule ID, file and line number when line content is unavailable. The `line_hash` field is also no longer written to config for these findings, preventing future mismatches.
+
+---
+
 ## v1.2.4 (2026-04-28)
 
 This release fixes misleading output when excepted findings are present in a scan.
