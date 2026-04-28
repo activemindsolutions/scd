@@ -2,6 +2,18 @@
 
 ---
 
+## v1.2.3 (2026-04-28)
+
+This release makes scd respect `.gitignore` when discovering files for scanning, dramatically improving scan performance on repos with large log files, build artifacts, or generated output.
+
+**`.gitignore` respected by default.** scd now excludes files and directories that git ignores from manual scans. A repo with a large log file or database in its working directory previously caused thousands of spurious findings and multi-minute scan times. With this change, only files that git would track are scanned by default.
+
+The filter uses two strategies depending on environment: if git is available, `git ls-files --ignored` is used for exact behaviour. If git is not available (e.g. a repo downloaded without `git clone`), scd parses `.gitignore` files manually, including nested `.gitignore` files, negation patterns, anchored patterns, and `**` globs.
+
+Use `scd scan --include-ignored` to scan all files regardless of `.gitignore`.
+
+---
+
 ## v1.2.2 (2026-04-27)
 
 This release detects and warns when scanning from a repo that overlaps with another scd repository.
