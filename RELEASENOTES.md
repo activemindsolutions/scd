@@ -2,6 +2,18 @@
 
 ---
 
+## v1.2.4 (2026-04-28)
+
+This release fixes misleading output when excepted findings are present in a scan.
+
+**Excepted CRITICAL and HIGH findings now shown explicitly.** Previously, excepted findings were only counted in the `✓ N finding(s) excepted` line — invisible to the developer. If a CRITICAL finding was excepted, it disappeared from the summary without any indication of what was excepted or why. scd now lists each excepted CRITICAL or HIGH finding below the excepted count, with severity icon, rule ID, file path and exception type.
+
+**Status message now reflects actual blocking severity.** The message `⚠️ Critical vulnerabilities found` was shown even when only HIGH findings were blocking. The message is now precise: `Critical vulnerabilities found` for CRITICAL, `High-severity vulnerabilities found` for HIGH. Expired exceptions show a separate yellow warning instead of reusing the red critical message.
+
+**HTML report stat cards exclude excepted findings.** The Critical and High counts in the report header previously included excepted findings, causing the report to show a non-zero Critical count even when all critical findings were approved exceptions.
+
+---
+
 ## v1.2.3 (2026-04-28)
 
 This release makes scd respect `.gitignore` when discovering files for scanning, dramatically improving scan performance on repos with large log files, build artifacts, or generated output.
