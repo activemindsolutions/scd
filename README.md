@@ -21,6 +21,7 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 - **Exception management** – reviewed exceptions tracked in config, never as code comments
 - **Exception sync** – pull team-lead approvals from scd-server, sync rejected back with reason
 - **Audit trail** – append-only scan history per repository
+- **`.gitignore` respected** – files git ignores are excluded from scans by default; use `--include-ignored` to override
 
 ## Team & Premium
 
@@ -93,11 +94,12 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 
 | Command | Description |
 |---|---|
-| `scd scan [target]` | Run a full security scan — vendor/dependency code excluded by default |
+| `scd scan [target]` | Run a full security scan — vendor and `.gitignore`d files excluded by default |
 | `scd scan --verbose` | Full file-grouped + rule-grouped output |
 | `scd scan --deep` | Deep analysis via scd-server *(Premium)* |
 | `scd scan --include-vendor` | Include vendor/dependency code in scan |
 | `scd scan --vendor-only` | Scan only vendor/dependency code (supply chain) |
+| `scd scan --include-ignored` | Scan files excluded by `.gitignore` (default: respect `.gitignore`) |
 | `scd scan --no-sync` | Skip pushing this scan to scd-server (audit log kept locally) *(Premium)* |
 | `scd scan --no-audit` | Skip audit logging entirely for this scan |
 
