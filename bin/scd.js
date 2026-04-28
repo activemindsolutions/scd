@@ -84,6 +84,7 @@ program
   .option('--no-sync',         'Skip push to scd-server for this scan (audit log kept locally)')
   .option('--include-vendor',  'Include vendor/dependency code in scan (node_modules, site-packages, vendor/ etc.)')
   .option('--vendor-only',     'Scan only vendor/dependency code (supply chain audit)')
+  .option('--include-ignored',  'Scan files ignored by .gitignore (default: respect .gitignore)')
   .option('--verbose',           'Show full file-grouped and rule-grouped output (default: compact summary)')
   .action(async (targets, opts) => {
     const cwdRepoRoot = getRepoRoot();  // provisional — may be overridden by target context
@@ -202,13 +203,13 @@ program
     let files = [], skipped = [];
     try {
       if (targetList.length === 1) {
-        ({ files, skipped } = discoverFiles(targetList[0], { lang: opts.lang, config, noLimit: opts.noLimit || false, includeVendor: !!opts.includeVendor, vendorOnly: !!opts.vendorOnly }));
+        ({ files, skipped } = discoverFiles(targetList[0], { lang: opts.lang, config, noLimit: opts.noLimit || false, includeVendor: !!opts.includeVendor, vendorOnly: !!opts.vendorOnly, includeIgnored: !!opts.includeIgnored, repoRoot }));
       } else {
         // Multiple targets (shell glob expansion): merge results, deduplicate by filePath
         const seen = new Set();
         for (const t of targetList) {
           try {
-            const result = discoverFiles(t, { lang: opts.lang, config, noLimit: opts.noLimit || false, includeVendor: !!opts.includeVendor, vendorOnly: !!opts.vendorOnly });
+            const result = discoverFiles(t, { lang: opts.lang, config, noLimit: opts.noLimit || false, includeVendor: !!opts.includeVendor, vendorOnly: !!opts.vendorOnly, includeIgnored: !!opts.includeIgnored, repoRoot });
             for (const f of result.files)   { if (!seen.has(f.filePath)) { seen.add(f.filePath); files.push(f); } }
             for (const s of result.skipped) { skipped.push(s); }
           } catch { /* skip targets that don't resolve */ }
@@ -227,14 +228,15 @@ program
     }
     process.stderr.write('\r\x1b[K'); // clear discovering status
     const langLabel = opts.lang ? ` [${opts.lang}]` : '';
-    const vendorLabel = opts.vendorOnly ? ' \x1b[33m[vendor-only]\x1b[0m' : opts.includeVendor ? ' \x1b[33m[+vendor]\x1b[0m' : '';
+    const vendorLabel   = opts.vendorOnly ? ' \x1b[33m[vendor-only]\x1b[0m' : opts.includeVendor ? ' \x1b[33m[+vendor]\x1b[0m' : '';
+    const ignoredLabel  = opts.includeIgnored ? ' \x1b[33m[+ignored]\x1b[0m' : '';
     console.log(`\n\x1b[36m╔══════════════════════════════════════════╗\x1b[0m`);
     const _vt2 = 'Secure Code by Design v' + pkg.version;
     const _pl2 = Math.floor((42 - _vt2.length) / 2);
     const _pr2 = 42 - _vt2.length - _pl2;
     console.log(`\x1b[36m║${ ' '.repeat(_pl2)}${_vt2}${ ' '.repeat(_pr2)}║\x1b[0m`);
     console.log(`\x1b[36m╚══════════════════════════════════════════╝\x1b[0m`);
-    console.log(`\x1b[90m Manual scan${langLabel}${vendorLabel}: ${scanTarget}\x1b[0m`);
+    console.log(`\x1b[90m Manual scan${langLabel}${vendorLabel}${ignoredLabel}: ${scanTarget}\x1b[0m`);
     console.log(`\x1b[90m ${files.length} file(s) found${skipped.length > 0 ? ` · ${skipped.length} skipped` : ''}\x1b[0m`);
     if (skipLogging) console.log(`\x1b[33m ↷ Results not saved — target is outside any known repository\x1b[0m`);
     console.log();
