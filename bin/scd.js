@@ -256,6 +256,11 @@ program
     // Show saving status during audit + cache write
     if (process.stderr.isTTY) process.stderr.write('\r\x1b[90m Saving results…\x1b[0m');
 
+    // Parse repo context from manifest files (package.json, requirements.txt, etc.)
+    const { parseRepoContext, saveRepoContext } = require('../lib/repo-context');
+    const repoContext = parseRepoContext(repoRoot);
+    let repoContextChanged = false;
+
     // Create one scanId — shared by audit log and scan file for full traceability
     const scanId = makeScanId();
 
@@ -263,6 +268,11 @@ program
     if (opts.sync === false) {
       process.stderr.write('\r\x1b[K');
       console.log('\x1b[90m ↷ --no-sync: results saved locally, not pushed to scd-server\x1b[0m');
+    }
+
+    // Save repo context if changed
+    if (!skipLogging && repoContext) {
+      repoContextChanged = saveRepoContext(repoRoot, repoContext);
     }
 
     // Audit (unless --no-audit)
@@ -274,6 +284,8 @@ program
         scanId,
         noSync:   opts.sync === false,
         scanMode: config.scan_mode || 'full',
+        repoContext:        repoContext        || null,
+        repoContextChanged: repoContextChanged || false,
       });
     }
 
