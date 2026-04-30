@@ -4,7 +4,7 @@
 
 Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilities before they reach production — running quietly in the background via git hooks and on-demand scans. Built for SMB companies using traditional coding and AI coding tools (Claude Code, GitHub Copilot, Cursor) which generates code faster than their security awareness can keep up with.
 
-**Not a replacement for penetration testing.** It minimizes the number of vulnerabilities that reach production so that pentests can focus on harder problems.
+**Not a replacement for penetration testing.** scd helps you find and fix common vulnerability patterns before they reach production, so that professional security assessments can focus on harder, context-specific problems. It does not replace a penetration test, threat model, or security audit.
 
 ---
 
@@ -68,61 +68,28 @@ See [INSTALL.md](INSTALL.md) for platform-specific Node.js setup, advanced optio
 
 ## Quick start
 
-Setting up scd takes two steps: one global step per machine, and one step per project.
-
-**Step 1 — Install git hooks on this machine (once per machine)**
-
 ```bash
-scd install
-```
-
-This sets up the git hooks that protect all your repos automatically. You only need to do this once per machine.
-
-**Step 2 — Register a project (once per project)**
-
-```bash
+# Register a project and install git hooks
 cd /path/to/your/project
 scd init
+
+# Run a full security scan
+scd scan
+
+# Run with verbose output (full file-grouped + rule-grouped detail)
+scd scan --verbose
+
+# Generate an HTML report from the last scan
+scd report
+
+# Open the report in your browser
+scd report --open          # macOS / Windows
+scd report --serve         # Linux / Firefox (starts local HTTP server)
 ```
-
-This registers the project in scd's local store and creates a per-repo config file. Run `scd init` in each project you want to scan.
-
-**Verify and scan**
-
-```bash
-scd doctor          # verify everything is set up correctly
-scd scan            # run your first scan
-scd scan --verbose  # full file-grouped + rule-grouped detail
-scd report          # generate an HTML report from the last scan
-scd report --open   # open report in browser (macOS / Windows)
-scd report --serve  # serve report via local HTTP server (Linux / Firefox)
-```
-
-### What is the difference between `scd install` and `scd init`?
-
-| | `scd install` | `scd init` |
-|---|---|---|
-| **Scope** | Machine-wide | Per project |
-| **Run** | Once per machine | Once per project |
-| **What it does** | Installs git hooks that protect all repos | Registers the project, creates config |
-| **Touches the repo** | No | No |
-
-`scd install` is the global step — it configures git on your machine so that hooks run automatically in every repository. `scd init` is the per-project step — it sets up scd's local config and scan store for that specific project.
-
-If you skip `scd install`, hooks will not run. `scd doctor` will tell you if this step has been missed.
 
 ---
 
 ## Commands
-
-### Installation
-
-| Command | Description |
-|---|---|
-| `scd install` | Install global git hooks on this machine *(run once per machine)* |
-| `scd uninstall` | Remove global git hooks from this machine |
-| `scd init` | Register this project with scd *(run once per project)* |
-| `scd doctor` | Verify installation and configuration |
 
 ### Scanning
 
@@ -155,6 +122,8 @@ If you skip `scd install`, hooks will not run. `scd doctor` will tell you if thi
 | Command | Description |
 |---|---|
 | `scd findings` | List open (unhandled) findings from last scan |
+| `scd findings <finding-id>` | Show a specific finding with full detail (problem, scenario, fix) |
+| `scd findings --verbose` | Show all open findings with problem description, scenario, and fix |
 | `scd findings --all` | All findings including excepted and resolved |
 | `scd findings --excepted` | Only excepted findings |
 | `scd findings --severity critical` | Filter by severity |
@@ -198,10 +167,11 @@ If you skip `scd install`, hooks will not run. `scd doctor` will tell you if thi
 | `scd repo configure --block-on-high <bool>` | Set blocking behaviour for this repo |
 | `scd remove` | Remove current repo from store (scan history preserved by default) |
 
-### Configuration
+### Setup & configuration
 
 | Command | Description |
 |---|---|
+| `scd init` | Register repo and install git hooks |
 | `scd configure --central-url <url>` | Set scd-server URL for team sync *(Premium)* |
 | `scd configure --token <token>` | Set scd-server API token *(Premium)* |
 | `scd configure --server-timeout <value>` | Set timeout for server API calls (e.g. `30s`, `1m`) *(Premium)* |
@@ -210,6 +180,7 @@ If you skip `scd install`, hooks will not run. `scd doctor` will tell you if thi
 | `scd configure --trust-level <value>` | Set global default trust level |
 | `scd configure --block-on-high <bool>` | Set global default block-on-high |
 | `scd version` | Detailed version info |
+| `scd doctor` | Verify installation and configuration |
 
 ---
 
@@ -226,20 +197,20 @@ If you skip `scd install`, hooks will not run. `scd doctor` will tell you if thi
 Languages covered: JavaScript, TypeScript, Python, PHP, ASP.NET (markup + C#).
 Covers all OWASP Top 10 categories. Run `scd rules --stats` for full breakdown.
 
+Covers OWASP Top 10 categories including Injection, Broken Access Control, Cryptographic Failures, Security Misconfiguration, and more.
+
 ---
 
 ## How it works
 
 ### Git hooks
 
-`scd install` configures git on your machine to use a shared hooks directory (`~/.scd/hooks` on macOS/Linux, `%USERPROFILE%\.scd\hooks` on Windows). This means every git repository on your machine is automatically protected — no per-repo hook setup needed.
+`scd init` configures git to use a shared hooks directory (`~/.scd/hooks` on macOS/Linux, `%USERPROFILE%\.scd\hooks` on Windows):
 
 ```
 pre-commit  → fast secrets scan (blocks CRITICAL findings)
 pre-push    → full OWASP scan  (blocks CRITICAL + HIGH findings)
 ```
-
-To remove the hooks, run `scd uninstall`. To disable hooks for a specific repo without removing them globally, use `scd repo hooks --disable --reason "<text>"`.
 
 ### Global store
 
@@ -314,9 +285,9 @@ Supports PHP, Python, and JavaScript/TypeScript. Set `scan_mode: fast` with `scd
 - The exact code line that triggered the rule
 - 8 lines of surrounding context
 
-**Whole files are never sent.** The AI analysis runs inside scd-server — the CLI only sends the findings listed above and receives the results back. Deep analysis requires scd-server with the Deep Analysis Pack. See [securecodebydesign.com](https://securecodebydesign.com) for subscription options.
+**Whole files are never sent.** Deep analysis requires scd-server with the Deep Analysis Pack. See [securecodebydesign.com](https://securecodebydesign.com) for subscription options.
 
-Set `trust_level: maximum_privacy` with `scd repo configure --trust-level maximum_privacy` to disable deep analysis and all external API calls entirely.
+Set `trust_level: maximum_privacy` with `scd repo configure --trust-level maximum_privacy` to disable all external API calls entirely.
 
 ### Exception management
 
@@ -366,13 +337,13 @@ block_on_high: true
 
 Edit with `scd repo configure --<option> <value>` or directly in the file.
 
-`trust_level` controls whether `scd scan --deep` is permitted to send findings to scd-server for AI analysis:
+`trust_level` controls which external connections are permitted:
 
 | Value | Behaviour |
 |---|---|
-| `maximum_privacy` | No external API calls. Deep analysis disabled. Strongest privacy guarantee. |
-| `balanced` | Default. Deep analysis available via `scd scan --deep` when scd-server is configured. |
-| `maximum_analysis` | Same as balanced — AI provider selection is configured in scd-server, not in the CLI. |
+| `maximum_privacy` | No external API calls. Local model only. Strongest privacy guarantee. |
+| `balanced` | Default. Local model preferred; cloud available as explicit opt-in. |
+| `maximum_analysis` | Cloud provider (Claude API). Maximum analysis depth. |
 
 ---
 
@@ -430,6 +401,9 @@ scd is intentionally lightweight. Keeping the dependency surface small is a deli
 | Package | Version | Purpose |
 |---|---|---|
 | [commander](https://github.com/tj/commander.js) | ^14.0.3 | CLI argument parsing and subcommand structure |
+| [@anthropic-ai/sdk](https://github.com/anthropic-ai/sdk-node) | latest | Deep analysis via Claude API (`scd scan --deep` only) |
+
+`@anthropic-ai/sdk` is only used when `scd scan --deep` is invoked with a connected scd-server. It is never called automatically and never sends data without explicit user action.
 
 No other runtime dependencies. Node.js built-in modules handle everything else.
 
@@ -445,6 +419,21 @@ npm audit         # check for known vulnerabilities
 ## Roadmap
 
 - `scd deps` – Dependency vulnerability scanning against OSV + CISA KEV feeds (designed, in development)
+- `scd uninstall` – clean removal with store data options
+
+---
+
+## Disclaimer
+
+Secure Code by Design is a static analysis tool designed to help development teams identify common security vulnerability patterns in source code. It is provided as a technical aid, not as a guarantee of security.
+
+**scd does not replace professional security testing.** No automated tool can detect all vulnerabilities in a codebase. scd does not perform dynamic analysis, penetration testing, runtime monitoring, or threat modelling. Findings depend on rule coverage, code patterns, and the languages supported — classes of vulnerabilities may exist that scd does not and cannot detect.
+
+**No liability for security incidents.** Activemind Solutions AB and the contributors to this project accept no liability for security breaches, data loss, regulatory penalties, or any other damages arising from the use or non-use of this tool, including cases where a vulnerability present in a scanned codebase was not identified by scd. The presence of a passing scan does not constitute a security certification or assurance of any kind.
+
+**scd is one layer of defence.** Effective application security requires multiple overlapping measures: secure design, code review, dependency management, penetration testing, monitoring, and incident response. scd is designed to make one of those layers — routine code scanning — easier and more consistent. It is not a substitute for any of the others.
+
+If your organisation requires a formal security assessment, contact a qualified security professional or penetration testing firm.
 
 ---
 

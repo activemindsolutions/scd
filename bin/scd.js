@@ -534,14 +534,15 @@ program
 
 
 program
-  .command('findings')
+  .command('findings [findingId]')
   .description('List findings from the last scan (default: open/unhandled only)')
   .option('--all',              'Show all findings including excepted and resolved')
   .option('--severity <level>', 'Filter by severity: critical, high, medium, exposure')
   .option('--rule <id>',        'Filter by rule ID (e.g. JS-ERR-002)')
   .option('--scan <id>',        'Load a specific scan by ID instead of last scan')
-  .option('--excepted',          'Show only excepted findings')
-  .action(async (opts) => {
+  .option('--excepted',         'Show only excepted findings')
+  .option('--verbose',          'Show problem description, attack scenario, and fix for each finding')
+  .action(async (findingId, opts) => {
     const { loadCache, loadScan, cacheAge } = require('../lib/scan-cache');
     const repoRoot = getRepoRoot();
 
@@ -578,9 +579,20 @@ program
     }
 
     let findings = scan.findings || [];
-    const showAll    = opts.all || opts.excepted;
+    const showAll      = opts.all || opts.excepted || !!findingId; // single finding searches all
     const showExcepted = opts.excepted;
-    const scanAge = scan.scanDate ? cacheAge(scan.scanDate) : 'unknown';
+    const showVerbose  = opts.verbose || !!findingId; // single finding always verbose
+    const scanAge      = scan.scanDate ? cacheAge(scan.scanDate) : 'unknown';
+
+    // If a specific findingId was given, filter to that one finding and show verbose
+    if (findingId) {
+      findings = findings.filter(f => f.findingId === findingId);
+      if (findings.length === 0) {
+        console.error(`\n\x1b[31m❌ Finding ${findingId} not found in this scan.\x1b[0m`);
+        console.error(`${DIM}   Run scd findings to see all finding IDs\x1b[0m\n`);
+        process.exit(1);
+      }
+    }
 
     // Apply --open filter (default) — exclude excepted and resolved
     if (!showAll) {
@@ -605,7 +617,9 @@ program
 
     // Header
     const scanLabel = opts.scan ? `Scan ${scan.scanId}` : `Last scan`;
-    const modeLabel = showExcepted ? 'excepted findings' : showAll ? 'all findings' : 'open findings only';
+    const modeLabel = findingId
+      ? `finding ${findingId}`
+      : showExcepted ? 'excepted findings' : showAll ? 'all findings' : 'open findings only';
     console.log(`\n${BOLD}Findings${RESET}  ${DIM}${scanLabel} · ${scanAge} · ${modeLabel}${RESET}`);
     if (!showAll) {
       console.log(`${DIM}  Showing unhandled findings. Use --all to include excepted and resolved.${RESET}`);
@@ -651,6 +665,48 @@ program
         if (f.snippet && f.snippet !== '[REDACTED]') {
           const snip = f.snippet.trim().slice(0, 80);
           console.log(`       ${DIM}${snip}${snip.length === 80 ? '…' : ''}${RESET}`);
+        }
+        if (showVerbose) {
+          if (f.why) {
+            console.log(`\n       ${BOLD}Problem${RESET}`);
+            const whyWords = f.why.split(' ');
+            let whyLine = '       ';
+            for (const word of whyWords) {
+              if (whyLine.length + word.length > 79) { console.log(whyLine); whyLine = '       ' + word + ' '; }
+              else whyLine += word + ' ';
+            }
+            if (whyLine.trim()) console.log(whyLine);
+          }
+          if (f.scenario) {
+            console.log(`\n       ${BOLD}Scenario${RESET}`);
+            // Word-wrap at 72 chars
+            const words = f.scenario.split(' ');
+            let line2 = '       ';
+            for (const word of words) {
+              if (line2.length + word.length > 79) {
+                console.log(line2);
+                line2 = '       ' + word + ' ';
+              } else {
+                line2 += word + ' ';
+              }
+            }
+            if (line2.trim()) console.log(line2);
+          }
+          if (f.fix) {
+            console.log(`\n       ${BOLD}Fix${RESET}`);
+            const words = f.fix.split(' ');
+            let line2 = '       ';
+            for (const word of words) {
+              if (line2.length + word.length > 79) {
+                console.log(line2);
+                line2 = '       ' + word + ' ';
+              } else {
+                line2 += word + ' ';
+              }
+            }
+            if (line2.trim()) console.log(line2);
+          }
+          console.log('');
         }
       }
       console.log('');
