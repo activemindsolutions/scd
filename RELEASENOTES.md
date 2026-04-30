@@ -2,6 +2,30 @@
 
 ---
 
+## v1.2.7 (2026-04-30)
+
+This release improves the installation experience with a new `scd uninstall` command, makes `scd install` visible in help output, and fixes misleading guidance when global hooks have not been set up yet.
+
+**`scd uninstall`.** A new command removes the global git hooks and clears the `core.hooksPath` git configuration from the machine. This is the clean counterpart to `scd install` — useful when moving to a different machine, switching to a per-repo hook setup, or troubleshooting a broken installation. The `~/.scd/` store is intentionally preserved so scan history, exceptions, and audit logs are not lost. The output includes a reminder of how to remove it manually if needed.
+
+**`scd install` now appears in `scd --help`.** The command was previously hidden from help output despite being a required step in the installation flow. It is now listed alongside other commands.
+
+**`scd init` warns when `scd install` has not been run.** After initialising a repo, scd now checks whether global hooks are active. If they are not, `scd install` appears as the first item in the "Next steps" list with a clear `(not done yet)` indicator. Previously, the next steps listed only config review and scanning — leaving a new user with hooks that appeared configured but were not actually installed.
+
+---
+
+## v1.2.6 (2026-04-29)
+
+This release adds tech stack detection from project manifest files, enabling scd-server to track which languages, frameworks, and dependencies are in use across repos.
+
+**Repo context from manifest files.** After each scan, scd reads the project's manifest files — `package.json`, `requirements.txt`, `pyproject.toml`, `composer.json`, and `.csproj` files — to extract the current tech stack. This includes detected languages, frameworks (Express, Django, Laravel, Flask, ASP.NET, etc.), the list of manifest files present, and all dependencies with their declared versions.
+
+The context is stored locally in `~/.scd/repos/{id}/repo-context.json` and sent to scd-server as a `repo_context` event when the manifests have changed since the last scan. Re-scanning without changing dependencies does not trigger a new push, avoiding unnecessary events.
+
+On scd-server (v0.10.2 or later), this data is stored as versioned snapshots and visible on the repo detail page and in the repository modal, showing a history of tech stack changes over time.
+
+---
+
 ## v1.2.5 (2026-04-28)
 
 This release overhauls exception management with finding IDs, introduces the `scd findings` command, and fixes several bugs in the exception and push-queue subsystems.

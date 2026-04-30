@@ -402,12 +402,20 @@ program
   });
 
 const installCmd = new Command('install')
-  .description('Install global git hooks')
+  .description('Install global git hooks on this machine')
   .action(async () => {
     const { install } = require('../lib/installer');
     await install();
   });
-program.addCommand(installCmd, { hidden: true });
+program.addCommand(installCmd);
+
+const uninstallCmd = new Command('uninstall')
+  .description('Remove global git hooks from this machine')
+  .action(async () => {
+    const { uninstall } = require('../lib/installer');
+    await uninstall();
+  });
+program.addCommand(uninstallCmd);
 
 program
   .command('doctor')
