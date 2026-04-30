@@ -126,12 +126,12 @@ program
   .command('scan [targets...]')
   .description('Run security scan – hook mode (automatic) or manual')
   .option('--hook <type>', 'Hook mode: pre-commit or pre-push (run by git hooks)')
-  .option('--lang <lang>', 'Begränsa till språk: js, ts, py, php ...')
-  .option('--severity <level>', 'Visa bara: CRITICAL, HIGH, EXPOSURE ...')
-  .option('--rule <id>', 'Visa bara specifik regel: INJ-001, JWT-001 ...')
-  .option('--format <fmt>', 'Output-format: terminal (default), html, json', 'terminal')
-  .option('--output <file>', 'Spara rapport till fil (används med --format html/json)')
-  .option('--no-limit', 'Scanna även filer över storleksgränsen (30s timeout/fil – kan vara långsamt)')
+  .option('--lang <lang>', 'Limit to language: js, ts, py, php ...')
+  .option('--severity <level>', 'Show only: CRITICAL, HIGH, EXPOSURE ...')
+  .option('--rule <id>', 'Show only specific rule: INJ-001, JWT-001 ...')
+  .option('--format <fmt>', 'Output format: terminal (default), html, json', 'terminal')
+  .option('--output <file>', 'Save report to file (used with --format html/json)')
+  .option('--no-limit', 'Scan files above size limit (30s timeout/file – may be slow)')
   .option('--deep',           'Enable Claude API deep analysis of CRITICAL/HIGH findings')
   .option('--deep-delay <ms>', 'Delay in ms between --deep API calls (overrides config deep_delay_ms)')
   .option('--no-audit',        'Skip audit logging for this scan')
@@ -152,7 +152,7 @@ program
       process.exit(1);
     }
 
-    // ── Hook-läge (anropat av git pre-commit/pre-push) ──────────────────
+    // ── Hook mode (called by git pre-commit/pre-push) ──────────────────
     if (opts.hook) {
       // Check for overlapping repos — warn but don't block (hooks are non-interactive)
       if (repoRoot) await checkRepoOverlap(repoRoot, { interactive: false });
@@ -194,7 +194,7 @@ program
       process.exit(exitCode);
     }
 
-    // ── Manuellt läge ───────────────────────────────────────────────────
+    // ── Manual mode ───────────────────────────────────────────────────
     const { discoverFiles, filterFindings } = require('../lib/scanner-manual');
 
     // Commander with variadic [targets...] is unreliable across versions —
@@ -278,8 +278,8 @@ program
 
     // Header
     if (opts.noLimit) {
-      console.log(`\n\x1b[33m⚠️  --no-limit aktivt – storleksgränsen är inaktiverad.\x1b[0m`);
-      console.log(`\x1b[90m   Stora filer (>512KB) scannas med 30s timeout per fil. Kan vara långsamt.\x1b[0m`);
+      console.log(`\n\x1b[33m⚠️  --no-limit active – size limit disabled.\x1b[0m`);
+      console.log(`\x1b[90m   Large files (>512KB) scanned with 30s timeout per file. May be slow.\x1b[0m`);
     }
     process.stderr.write('\r\x1b[K'); // clear discovering status
     const langLabel = opts.lang ? ` [${opts.lang}]` : '';
@@ -298,7 +298,7 @@ program
 
     if (files.length === 0) {
       console.log('\x1b[33m No supported files found.\x1b[0m');
-      console.log(`\x1b[90m Stödda filändelser: .js .ts .jsx .tsx .mjs .py .php\x1b[0m\n`);
+      console.log(`\x1b[90m Supported extensions: .js .ts .jsx .tsx .mjs .py .php\x1b[0m\n`);
       process.exit(0);
     }
 
