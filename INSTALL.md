@@ -66,12 +66,6 @@ npm install -g @activemind/scd
 scd --version   # verify
 ```
 
-To uninstall (your scan history in `~/.scd` is kept):
-
-```bash
-npm uninstall -g @activemind/scd
-```
-
 > **Development install:** If you have cloned the repository and want to run from source:
 > ```bash
 > cd scd
@@ -82,19 +76,52 @@ npm uninstall -g @activemind/scd
 
 ---
 
-## 3. Set up a repository
+## 3. Set up git hooks (once per machine)
 
-Run this inside any Git repository you want to scan:
+scd uses git hooks to scan your code automatically — before commits (secrets scan) and before pushes (full OWASP scan). The hooks are installed globally on your machine, so every git repository you work in is protected automatically.
+
+```bash
+scd install
+```
+
+You only need to run this once per machine. It sets up the hooks in `~/.scd/hooks/` and configures git to use them globally. Verify with:
+
+```bash
+scd doctor
+```
+
+**To remove the hooks** from a machine (for example when switching to a different setup):
+
+```bash
+scd uninstall
+```
+
+This removes the global hooks and the git configuration, but preserves your scan history and exceptions in `~/.scd/`.
+
+---
+
+## 4. Register a project (once per project)
+
+Once the hooks are installed, register each project you want to work with:
 
 ```bash
 cd /path/to/your/project
-scd init     # register repo + install git hooks
-scd doctor   # verify setup
+scd init
 scd scan     # run your first scan
 ```
 
-`scd init` installs pre-commit and pre-push hooks via Git's `core.hooksPath` — no files
-are written to your repository.
+`scd init` creates a per-project config file in `~/.scd/repos/` — nothing is written to your repository. Run it in each project you want to track separately.
+
+### What is the difference between `scd install` and `scd init`?
+
+| | `scd install` | `scd init` |
+|---|---|---|
+| **Scope** | Machine-wide | Per project |
+| **Run** | Once per machine | Once per project |
+| **What it does** | Installs git hooks that protect all repos | Registers the project, creates config |
+| **Touches the repo** | No | No |
+
+`scd install` is the global step — without it, hooks do not run. `scd init` is the per-project step — it sets up the local config and scan store for that specific project. `scd doctor` will tell you clearly if either step has been missed.
 
 ---
 
@@ -149,7 +176,7 @@ All scan history, configuration, and reports are stored outside your repositorie
       exports/                   ← exported json-files from scd export-findings command
 ```
 
-Uninstalling `scd` does not remove store data — your scan history is preserved.
+Uninstalling scd with `npm uninstall -g @activemind/scd` or `scd uninstall` does not remove store data — your scan history is preserved.
 
 **Inspect or clean up store data:**
 
@@ -172,6 +199,24 @@ Remove-Item -Recurse -Force "$env:USERPROFILE\.scd"
 
 ---
 
+## Uninstalling scd completely
+
+To remove everything — hooks, npm package, and store data:
+
+```bash
+# 1. Remove global hooks and git configuration
+scd uninstall
+
+# 2. Remove the npm package
+npm uninstall -g @activemind/scd
+
+# 3. Remove store data (scan history, configs, reports) — irreversible
+rm -rf ~/.scd                     # macOS / Linux
+# Remove-Item -Recurse -Force "$env:USERPROFILE\.scd"   # Windows
+```
+
+---
+
 ## Shell aliases
 
 If you have existing aliases that conflict with the `scd` command, remove them from your
@@ -189,6 +234,9 @@ source ~/.zshrc   # or ~/.bashrc
 ```
 
 On Windows, check your PowerShell profile (`$PROFILE`) for conflicting aliases.
+
+> **Note for nvm users:** If `scd` points to the wrong location after switching Node.js versions,
+> run `hash -r` (bash/zsh) to clear the shell's command cache and force a fresh PATH lookup.
 
 ---
 
@@ -304,5 +352,30 @@ Instead, configure npm to use a user-local prefix:
 mkdir -p ~/.npm-global
 npm config set prefix '~/.npm-global'
 export PATH="$HOME/.npm-global/bin:$PATH"   # add this to ~/.bashrc too
+npm install -g @activemind/scd
+```
+
+---
+
+**`scd` points to wrong location after switching Node.js versions (nvm)**
+
+If you switch Node.js versions with nvm and `scd` stops working or points to an old path,
+clear your shell's command cache:
+
+```bash
+hash -r
+```
+
+Then verify:
+
+```bash
+which scd
+scd --version
+```
+
+If `scd` is still missing, reinstall the package for the new Node.js version:
+
+```bash
+nvm use 22
 npm install -g @activemind/scd
 ```
