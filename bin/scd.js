@@ -584,6 +584,23 @@ program
     const showVerbose  = opts.verbose || !!findingId; // single finding always verbose
     const scanAge      = scan.scanDate ? cacheAge(scan.scanDate) : 'unknown';
 
+    // Re-evaluate exception status against current config.yml — a finding may have been
+    // accepted/ignored since the last scan without re-running the scan.
+    if (!isHistoric && repoRoot) {
+      try {
+        const { loadConfig, isExcepted } = require('../lib/config');
+        const cfg = loadConfig(repoRoot);
+        findings = findings.map(f => {
+          if (f.excepted) return f; // already marked excepted in cache
+          const lineContent = f.snippet && f.snippet !== '[REDACTED]' ? f.snippet : null;
+          const result = isExcepted(cfg, f, lineContent);
+          if (result.excepted) return { ...f, excepted: true };
+          if (result.rejected) return { ...f, rejected: true };
+          return f;
+        });
+      } catch { /* non-fatal — fall back to cached values */ }
+    }
+
     // If a specific findingId was given, filter to that one finding and show verbose
     if (findingId) {
       findings = findings.filter(f => f.findingId === findingId);
