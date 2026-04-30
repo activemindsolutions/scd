@@ -7,7 +7,29 @@
 const { Command } = require('commander');
 
 /**
- * Open a URL or file path in the default browser/application.
+ * Print a version warning if the local CLI is below the server's minimum
+ * required version. Reads from cached value — no network call.
+ * Non-fatal: only shown when a central URL is configured.
+ * opts.toStderr — write to stderr instead of stdout (for hook mode)
+ */
+function warnIfOutdated(opts = {}) {
+  try {
+    // Only warn when a server is configured — not in standalone mode
+    const globalCfg = require('../lib/global-config');
+    const url = globalCfg.getCentralUrl();
+    if (!url) return;
+
+    const { getVersionWarning } = require('../lib/version-check');
+    const warn = getVersionWarning();
+    if (warn) {
+      const out = opts.toStderr ? process.stderr : process.stdout;
+      out.write('\n\x1b[33m' + warn + '\x1b[0m\n');
+    }
+  } catch { /* never break a command */ }
+}
+
+
+/**
  * Handles platform differences correctly:
  *   macOS  → open
  *   Linux  → xdg-open
@@ -42,11 +64,43 @@ const program = new Command();
 async function tryFlush(opts = {}) {
   if (opts.noSync) return;  // --no-sync: skip push to scd-server
   try {
-    const { getCentralUrl } = require('../lib/global-config');
+    const { getCentralUrl, getCentralToken, getMinCliVersion, setServerVersionInfo } = require('../lib/global-config');
     const centralUrl = getCentralUrl();
     if (!centralUrl) return;
     const { flush, queueSize } = require('../lib/push-queue');
-    if (queueSize() === 0) return;
+
+    if (queueSize() === 0) {
+      // Queue empty — no flush needed, but fetch version info if not yet cached.
+      // Fire-and-forget: never blocks or throws.
+      if (!getMinCliVersion()) {
+        const token   = getCentralToken();
+        const baseUrl = centralUrl.replace(/\/$/, '');
+        const http    = baseUrl.startsWith('https') ? require('https') : require('http');
+        new Promise((resolve) => {
+          const req = http.get(
+            baseUrl + '/api/v1/health',
+            { headers: token ? { 'Authorization': `Bearer ${token}` } : {}, timeout: 4000 },
+            (res) => {
+              let data = '';
+              res.on('data', chunk => { data += chunk; });
+              res.on('end', () => {
+                try {
+                  const body = JSON.parse(data);
+                  if (body.version || body.min_cli_version) {
+                    setServerVersionInfo(body.version || null, body.min_cli_version || null);
+                  }
+                } catch { /* ignore */ }
+                resolve();
+              });
+            }
+          );
+          req.on('timeout', () => { req.destroy(); resolve(); });
+          req.on('error', () => resolve());
+        }).catch(() => {});
+      }
+      return;
+    }
+
     const repoRoot = (() => {
       try { return require('../lib/config').getRepoRoot(); } catch { return null; }
     })();
@@ -136,6 +190,7 @@ program
       const { output, exitCode } = formatTerminal(findings, opts.hook, config, { verbose: opts.verbose });
       console.log(output);
       if (opts.sync !== false) await tryFlush(opts);
+      warnIfOutdated({ toStderr: true });
       process.exit(exitCode);
     }
 
@@ -398,6 +453,7 @@ program
 
     // Manual scan: always exit 0 (informational, never blocks workflow)
     await tryFlush(opts);
+    warnIfOutdated();
     process.exit(0);
   });
 
@@ -598,6 +654,7 @@ program
       console.log(`${DIM}  scd accept <finding-id> --reason "..."   or   scd ignore <finding-id> --reason "..."${RESET}`);
     }
     console.log('');
+    warnIfOutdated();
   });
 
 
@@ -633,6 +690,7 @@ program
 
     const { syncExceptions } = require('../lib/exception-manager');
     await syncExceptions(repoRoot);
+    warnIfOutdated();
   });
 
 
@@ -644,6 +702,7 @@ program
     const { listExceptions } = require('../lib/exception-manager');
     const repoRoot = getRepoRoot();
     listExceptions(repoRoot, opts.list || 'all');
+    warnIfOutdated();
   });
 
 
