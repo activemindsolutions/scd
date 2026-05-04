@@ -449,6 +449,8 @@ program
       skipped,
       scanDate:   new Date(),
       deepResults: deepResults ? Array.from(deepResults.entries()) : null,
+      repoRoot:   repoRoot || process.cwd(),
+      scanMode:   config.scan_mode || 'full',
     }, scanId);
 
     // Manual scan: always exit 0 (informational, never blocks workflow)
