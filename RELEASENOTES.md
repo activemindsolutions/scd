@@ -2,6 +2,16 @@
 
 ---
 
+## v1.2.11 (2026-05-06)
+
+This release completes the CLI refactoring by splitting `bin/scd.js` into individual command modules.
+
+**`bin/scd.js` split into `lib/commands/`.** The 2223-line entry point has been broken into 20 focused command files under `lib/commands/`, each exporting a `register(program)` function. `bin/scd.js` is now 171 lines — a 92% reduction. Shared CLI utilities (`warnIfOutdated`, `openInBrowser`, `tryFlush`) have been extracted into `lib/cli-helpers.js`. This is a structural refactoring with no behaviour changes — verified with a golden output diff across all commands.
+
+**No functional changes.** All commands work identically to v1.2.10. The `tests/integrity/files.json` manifest has been updated to reflect the new file layout.
+
+---
+
 ## v1.2.10 (2026-05-06)
 
 This release converts all security rule files from JavaScript modules to JSON, moves the rules directory to the repo root, and fixes two rule pattern regressions discovered during the conversion.
