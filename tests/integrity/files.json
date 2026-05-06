@@ -167,43 +167,43 @@
       "enabled": true
     },
     {
-      "file": "lib/rules/rules-aspx-cs.js",
+      "file": "rules/rules-aspx-cs.js",
       "actual": 33179,
       "minBytes": 23225,
       "enabled": false
     },
     {
-      "file": "lib/rules/rules-aspx-cs.json",
+      "file": "rules/rules-aspx-cs.json",
       "actual": 28681,
       "minBytes": 20076,
       "enabled": true
     },
     {
-      "file": "lib/rules/rules-aspx.js",
+      "file": "rules/rules-aspx.js",
       "actual": 19928,
       "minBytes": 13949,
       "enabled": false
     },
     {
-      "file": "lib/rules/rules-aspx.json",
+      "file": "rules/rules-aspx.json",
       "actual": 18282,
       "minBytes": 12797,
       "enabled": true
     },
     {
-      "file": "lib/rules/rules-infra-leakage.js",
+      "file": "rules/rules-infra-leakage.js",
       "actual": 29408,
       "minBytes": 20585,
       "enabled": false
     },
     {
-      "file": "lib/rules/rules-infra-leakage.json",
+      "file": "rules/rules-infra-leakage.json",
       "actual": 24804,
       "minBytes": 17362,
       "enabled": true
     },
     {
-      "file": "lib/rules/rule-loader.js",
+      "file": "rules/rule-loader.js",
       "actual": 15141,
       "minBytes": 10598,
       "enabled": true
@@ -215,61 +215,61 @@
       "enabled": true
     },
     {
-      "file": "lib/rules/rules-js.js",
+      "file": "rules/rules-js.js",
       "actual": 32650,
       "minBytes": 22855,
       "enabled": false
     },
     {
-      "file": "lib/rules/rules-js.json",
+      "file": "rules/rules-js.json",
       "actual": 28265,
       "minBytes": 24025,
       "enabled": true
     },
     {
-      "file": "lib/rules/rules-php.js",
+      "file": "rules/rules-php.js",
       "actual": 36616,
       "minBytes": 25631,
       "enabled": false
     },
     {
-      "file": "lib/rules/rules-php.json",
+      "file": "rules/rules-php.json",
       "actual": 30622,
       "minBytes": 21435,
       "enabled": true
     },
     {
-      "file": "lib/rules/rules-python.js",
+      "file": "rules/rules-python.js",
       "actual": 33417,
       "minBytes": 23391,
       "enabled": false
     },
     {
-      "file": "lib/rules/rules-python.json",
+      "file": "rules/rules-python.json",
       "actual": 28864,
       "minBytes": 20204,
       "enabled": true
     },
     {
-      "file": "lib/rules/rules-sensitive-files.js",
+      "file": "rules/rules-sensitive-files.js",
       "actual": 33530,
       "minBytes": 23471,
       "enabled": false
     },
     {
-      "file": "lib/rules/rules-sensitive-files.json",
+      "file": "rules/rules-sensitive-files.json",
       "actual": 28624,
       "minBytes": 20036,
       "enabled": true
     },
     {
-      "file": "lib/rules/rules-ts.js",
+      "file": "rules/rules-ts.js",
       "actual": 7687,
       "minBytes": 5380,
       "enabled": false
     },
     {
-      "file": "lib/rules/rules-ts.json",
+      "file": "rules/rules-ts.json",
       "actual": 5967,
       "minBytes": 5071,
       "enabled": true
