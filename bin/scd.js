@@ -364,21 +364,9 @@ program
     process.exit(0);
   });
 
-const installCmd = new Command('install')
-  .description('Install global git hooks on this machine')
-  .action(async () => {
-    const { install } = require('../lib/installer');
-    await install();
-  });
-program.addCommand(installCmd);
+require('../lib/commands/install').register(program);
+require('../lib/commands/uninstall').register(program);
 
-const uninstallCmd = new Command('uninstall')
-  .description('Remove global git hooks from this machine')
-  .action(async () => {
-    const { uninstall } = require('../lib/installer');
-    await uninstall();
-  });
-program.addCommand(uninstallCmd);
 
 program
   .command('doctor')
@@ -710,26 +698,9 @@ program
     }
   });
 
+require('../lib/commands/init').register(program);
 
-program
-  .command('init')
-  .description('Initialise Secure Code by Design in this repo and install git hooks')
-  .action(async () => {
-    const { initRepo } = require('../lib/init-repo');
-    const repoRoot = getRepoRoot();
-    await initRepo(repoRoot);
-  });
-
-
-program
-  .command('remove')
-  .description('Remove this repo from scd — marks as inactive and optionally deletes scan history')
-  .action(async () => {
-    const { removeRepo } = require('../lib/remove-repo');
-    const repoRoot = getRepoRoot();
-    await removeRepo(repoRoot);
-  });
-
+require('../lib/commands/remove').register(program);
 
 program
   .command('report')
