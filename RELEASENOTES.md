@@ -2,15 +2,65 @@
 
 ---
 
+## v1.2.10 (2026-05-06)
+
+This release converts all security rule files from JavaScript modules to JSON, moves the rules directory to the repo root, and fixes two rule pattern regressions discovered during the conversion.
+
+**All security rules are now JSON.** The eight rule files that define scd's 174 security rules have been converted from JavaScript modules to JSON. Patterns are stored as strings and compiled at load time by a new `rules/rule-loader.js` module. This makes rules inspectable without running code, enables future server-side rule distribution and custom rule packs, and prepares the ground for the plugin system planned post-release. The conversion was verified with a golden output diff — findings are identical before and after on a full scan.
+
+**`rules/` moved to repo root.** The rules directory has moved from `lib/rules/` to `rules/` at the repository root. Rule files are JSON data, not library code, and placing them alongside `bin/` and `lib/` reflects that. This also matches the intended layout for future community and commercial rule packs.
+
+**`lib/rule-registry.js` now exports `getRuleById()`.** A new function provides a single lookup point for compiled rule objects including pattern and antipattern strings. `lib/export-findings.js` (`scd review-rules`) uses this instead of importing rule files directly, removing the last direct dependency on the old JS rule module format.
+
+**Two rule pattern fixes included in this release:**
+
+*PY-INJ-006 — unparameterized query detection.* The pattern for detecting string concatenation into `cursor.execute()` calls was missing one variant. `cursor.execute("SELECT ... " + user_id)` (string before variable, no comma) was not matched. The pattern now correctly covers all three concat forms: `.format()`, string + variable, and variable + string.
+
+*CS-SECRET-001 — hardcoded connection string detection.* During conversion, a backslash was inadvertently added to the negated character class used to match connection string content. This caused Windows-style connection strings containing `Server=HOST\\INSTANCE` to not be matched. The character class has been corrected to exclude only newlines, not backslashes.
+
+---
+
+## v1.2.9 (2026-05-05)
+
+This release adds a canonical scan object schema as the first step of the pre-release refactoring plan.
+
+**Scan object schema (`lib/scan-schema.js`).** A new module defines the canonical shape of a scan object and the list of required fields. `validateScan()` is called at write time in `scan-cache.js` and warns to the console if any required field is missing — it never throws. This provides a single reference point for the eight modules that read scan data, and makes it immediately visible if a future change to the scanner omits a field that other modules depend on. The `exclusions` field has also been added as a `null` placeholder for the upcoming `.scdignore` feature.
+
+---
+
+## v1.2.8 (2026-04-30)
+
+This release fixes several bugs in the exception flow, improves `scd findings` with verbose output and single-finding lookup, adds a legal disclaimer, and translates all remaining Swedish strings to English.
+
+**Exception flow fixed for standalone and server modes.** In standalone mode (no scd-server configured), exceptions created with `scd accept` or `scd ignore` are now approved immediately — the `pending` status only makes sense when a server is available for team-lead approval. Previously, standalone exceptions were marked as pending and the finding continued to appear in scan output.
+
+**`scd findings` live exception update.** After running `scd accept` or `scd ignore`, the accepted finding now disappears from `scd findings` immediately — without requiring a new scan. Previously, the finding would remain visible until the next scan re-evaluated it.
+
+**`scd findings <finding-id>`.** Show detailed information for a specific finding directly: `scd findings f-a1b2c3d4`. Displays the finding with full Problem, Scenario, and Fix sections. Also works for excepted findings — searching all findings regardless of status.
+
+**`scd findings --verbose`.** Show Problem description, attack Scenario, and Fix guidance for all findings in the list. Useful for reviewing findings without opening a report.
+
+**Exception hash matching fixed.** Exceptions created before v1.2.5 used a 16-character hash format, while newer exceptions use 32 characters. The exception matcher now accepts both formats, so old exceptions continue to work correctly after upgrading.
+
+**Legal disclaimer.** `DISCLAIMER.md` has been added to the repository root, covering the scope and limitations of static analysis tooling and liability. A brief notice with a link to the full text is shown once during `scd install`.
+
+**Translation.** All remaining Swedish strings in terminal output, prompts, and code comments have been translated to English.
+
+---
+
 ## v1.2.7 (2026-04-30)
 
-This release improves the installation experience with a new `scd uninstall` command, makes `scd install` visible in help output, and fixes misleading guidance when global hooks have not been set up yet.
+This release adds `scd uninstall`, makes `scd install` visible in help output, improves installation guidance, and adds a version warning when the CLI is outdated relative to the connected scd-server.
 
-**`scd uninstall`.** A new command removes the global git hooks and clears the `core.hooksPath` git configuration from the machine. This is the clean counterpart to `scd install` — useful when moving to a different machine, switching to a per-repo hook setup, or troubleshooting a broken installation. The `~/.scd/` store is intentionally preserved so scan history, exceptions, and audit logs are not lost. The output includes a reminder of how to remove it manually if needed.
+**`scd uninstall`.** A new command removes the global git hooks and clears the `core.hooksPath` git configuration from the machine. The `~/.scd/` store is intentionally preserved so scan history, exceptions, and audit logs are not lost.
 
-**`scd install` now appears in `scd --help`.** The command was previously hidden from help output despite being a required step in the installation flow. It is now listed alongside other commands.
+**`scd install` now appears in `scd --help`.** The command was previously hidden from help output despite being a required step in the installation flow.
 
-**`scd init` warns when `scd install` has not been run.** After initialising a repo, scd now checks whether global hooks are active. If they are not, `scd install` appears as the first item in the "Next steps" list with a clear `(not done yet)` indicator. Previously, the next steps listed only config review and scanning — leaving a new user with hooks that appeared configured but were not actually installed.
+**`scd init` warns when `scd install` has not been run.** After initialising a repo, scd now checks whether global hooks are active and shows `scd install (not done yet)` in the Next steps list if they are not installed. This check works correctly even outside a git repository.
+
+**Version warning when CLI is outdated.** When connected to scd-server, scd now warns if the local CLI version is below the server's minimum required version. The warning appears in `scd doctor` (always, via health check) and at the end of `scd scan`, `scd findings`, `scd sync`, and `scd exceptions` (from the second run onward, using a cached value). Hook scans write the warning to stderr so it does not interfere with git output. No warning is shown in standalone mode.
+
+**`scd doctor` no longer leaks `fatal: not a git repository`.** Running `scd doctor` outside a git repository previously printed git's error message to the terminal before the scd output. This has been fixed.
 
 ---
 
