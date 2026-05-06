@@ -388,15 +388,8 @@ program
     await doctor();
   });
 
-program
-  .command('audit')
-  .description('Show recent audit log')
-  .option('--limit <n>', 'Number of events', '50')
-  .action(async (opts) => {
-    const { showAuditReport } = require('../lib/audit-report');
-    const repoRoot = getRepoRoot();
-    await showAuditReport(repoRoot, parseInt(opts.limit));
-  });
+require('../lib/commands/audit').register(program);
+
 
 program
   .command('accept [findingId]')
@@ -962,26 +955,7 @@ program
     console.log();
   });
 
-
-
-
-program
-  .command('insights')
-  .description('Analyze behavioral patterns and knowledge gaps from the audit log')
-  .option('--days <n>',  'Analyze the last N days (default: 90)', '90')
-  .action(async (opts) => {
-    const { analyzeInsights } = require('../lib/insights-analyzer');
-    const { renderInsights }  = require('../lib/insights-output');
-    const repoRoot            = getRepoRoot();
-    const days                = Math.max(1, parseInt(opts.days) || 90);
-
-    console.log(`\n\x1b[2m↺ Analyzing audit log (last ${days} days)…\x1b[0m`);
-
-    const analysis = await analyzeInsights(repoRoot, { days });
-    renderInsights(analysis);
-  });
-
-
+require('../lib/commands/insights').register(program);
 
 program
   .command('configure')
