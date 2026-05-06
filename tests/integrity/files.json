@@ -218,6 +218,12 @@
       "file": "lib/rules/rules-js.js",
       "actual": 32650,
       "minBytes": 22855,
+      "enabled": false
+    },
+    {
+      "file": "lib/rules/rules-js.json",
+      "actual": 28265,
+      "minBytes": 24025,
       "enabled": true
     },
     {

