@@ -260,6 +260,12 @@
       "file": "lib/rules/rules-ts.js",
       "actual": 7687,
       "minBytes": 5380,
+      "enabled": false
+    },
+    {
+      "file": "lib/rules/rules-ts.json",
+      "actual": 5967,
+      "minBytes": 5071,
       "enabled": true
     },
     {
