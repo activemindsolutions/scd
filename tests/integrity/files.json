@@ -224,12 +224,24 @@
       "file": "lib/rules/rules-php.js",
       "actual": 36616,
       "minBytes": 25631,
+      "enabled": false
+    },
+    {
+      "file": "lib/rules/rules-php.json",
+      "actual": 30622,
+      "minBytes": 21435,
       "enabled": true
     },
     {
       "file": "lib/rules/rules-python.js",
       "actual": 33417,
       "minBytes": 23391,
+      "enabled": false
+    },
+    {
+      "file": "lib/rules/rules-python.json",
+      "actual": 28864,
+      "minBytes": 20204,
       "enabled": true
     },
     {

