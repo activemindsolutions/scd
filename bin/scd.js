@@ -367,16 +367,7 @@ program
 require('../lib/commands/install').register(program);
 require('../lib/commands/uninstall').register(program);
 
-
-program
-  .command('doctor')
-  .description('Check installation health')
-  .action(async () => {
-    const { doctor } = require('../lib/doctor');
-    await doctor();
-  });
-
-require('../lib/commands/audit').register(program);
+require('../lib/commands/doctor').register(program);
 
 
 program
