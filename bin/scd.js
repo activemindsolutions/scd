@@ -369,48 +369,9 @@ require('../lib/commands/uninstall').register(program);
 
 require('../lib/commands/doctor').register(program);
 
+require('../lib/commands/accept').register(program);
 
-program
-  .command('accept [findingId]')
-  .description('Accept a finding as an acceptable risk (requires team-lead approval via scd-server)')
-  .option('--reason <text>', 'Reason why this risk is accepted (required)')
-  .option('--tag <tag>',     'Optional tag for filtering (e.g. false_positive, out_of_scope, third_party)')
-  .action(async (findingId, opts) => {
-    const { addExceptionById } = require('../lib/exception-manager');
-    const repoRoot = getRepoRoot();
-    if (!findingId) {
-      console.error('\x1b[31m❌ Finding ID required. Run scd findings to see IDs.\x1b[0m');
-      console.error('\x1b[90m   Usage: scd accept <finding-id> --reason "..."\x1b[0m');
-      process.exit(1);
-    }
-    if (!opts.reason) {
-      console.error('\x1b[31m❌ --reason is required.\x1b[0m');
-      process.exit(1);
-    }
-    await addExceptionById(repoRoot, findingId, opts, 'exception');
-  });
-
-
-program
-  .command('ignore [findingId]')
-  .description('Ignore a finding (requires team-lead approval via scd-server)')
-  .option('--reason <text>', 'Reason for ignoring this finding (required)')
-  .option('--tag <tag>',     'Optional tag for filtering (e.g. false_positive, out_of_scope, third_party)')
-  .action(async (findingId, opts) => {
-    const { addExceptionById } = require('../lib/exception-manager');
-    const repoRoot = getRepoRoot();
-    if (!findingId) {
-      console.error('\x1b[31m❌ Finding ID required. Run scd findings to see IDs.\x1b[0m');
-      console.error('\x1b[90m   Usage: scd ignore <finding-id> --reason "..."\x1b[0m');
-      process.exit(1);
-    }
-    if (!opts.reason) {
-      console.error('\x1b[31m❌ --reason is required.\x1b[0m');
-      process.exit(1);
-    }
-    await addExceptionById(repoRoot, findingId, opts, 'ignore');
-  });
-
+require('../lib/commands/ignore').register(program);
 
 program
   .command('findings [findingId]')
@@ -671,23 +632,7 @@ program
   });
 
 
-program
-  .command('resolve')
-  .description('Mark an EXPOSURE finding as handled, or remove a rejected exception by ID')
-  .option('--rule <id>',      'Rule ID (for EXPOSURE findings)')
-  .option('--file <path>',   'File path (for EXPOSURE findings)')
-  .option('--line <n>',      'Line number (for EXPOSURE findings)')
-  .option('--rejected <id>', 'Remove a rejected exception from local config by exception ID')
-  .action(async (opts) => {
-    const repoRoot = getRepoRoot();
-    if (opts.rejected) {
-      const { removeRejected } = require('../lib/exception-manager');
-      removeRejected(repoRoot, opts.rejected);
-    } else {
-      const { resolveExposure } = require('../lib/resolve-manager');
-      await resolveExposure(repoRoot, opts);
-    }
-  });
+require('../lib/commands/resolve').register(program);
 
 require('../lib/commands/init').register(program);
 
