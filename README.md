@@ -23,6 +23,7 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 - **Exception sync** – pull team-lead approvals from scd-server, sync rejected back with reason
 - **Audit trail** – append-only scan history per repository
 - **`.gitignore` respected** – files git ignores are excluded from scans by default; use `--include-ignored` to override
+- **Scan scope management** – explicitly exclude files, directories, or rules with documented reasons via `scope.yml`; every exclusion is tracked in scan output and audit log
 
 ## Team & Premium
 
@@ -166,6 +167,23 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 | `scd repo configure --trust-level <value>` | Set trust level for this repo |
 | `scd repo configure --block-on-high <bool>` | Set blocking behaviour for this repo |
 | `scd remove` | Remove current repo from store (scan history preserved by default) |
+
+### Scope management
+
+| Command | Description |
+|---|---|
+| `scd scope --show` | Show global scope exclusions (applies to all repos) |
+| `scd scope --add-file <pattern> --reason <text>` | Exclude files/directories globally |
+| `scd scope --add-rule <id> --reason <text>` | Exclude a rule globally |
+| `scd scope --remove-file <pattern> --reason <text>` | Remove a global file exclusion |
+| `scd scope --remove-rule <id> --reason <text>` | Remove a global rule exclusion |
+| `scd repo scope --show` | Show merged scope for current repo (global + repo + server) |
+| `scd repo scope --add-file <pattern> --reason <text>` | Exclude files/directories for this repo |
+| `scd repo scope --add-rule <id> --reason <text>` | Exclude a rule for this repo |
+| `scd repo scope --remove-file <pattern> --reason <text>` | Remove a repo file exclusion |
+| `scd repo scope --remove-rule <id> --reason <text>` | Remove a repo rule exclusion |
+
+All scope exclusions require a `--reason`. Active exclusions are shown prominently in every scan.
 
 ### Setup & configuration
 
