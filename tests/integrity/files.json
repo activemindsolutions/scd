@@ -131,6 +131,12 @@
       "enabled": true
     },
     {
+      "file": "lib/commands/scope.js",
+      "actual": 9338,
+      "minBytes": 6536,
+      "enabled": true
+    },
+    {
       "file": "lib/commands/scan.js",
       "actual": 17809,
       "minBytes": 12466,
@@ -308,6 +314,12 @@
       "file": "lib/scan-schema.js",
       "actual": 2671,
       "minBytes": 1869,
+      "enabled": true
+    },
+    {
+      "file": "lib/scope.js",
+      "actual": 11825,
+      "minBytes": 8277,
       "enabled": true
     },
     {

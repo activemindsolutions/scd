@@ -50,6 +50,7 @@ require('../lib/commands/report').register(program);
 require('../lib/commands/insights').register(program);
 
 require('../lib/commands/configure').register(program);
+require('../lib/commands/scope').register(program);
 
 
 require('../lib/commands/repo').register(program);
