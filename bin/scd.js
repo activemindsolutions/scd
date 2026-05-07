@@ -47,6 +47,7 @@ require('../lib/commands/remove').register(program);
 
 require('../lib/commands/report').register(program);
 
+require('../lib/commands/audit').register(program);
 require('../lib/commands/insights').register(program);
 
 require('../lib/commands/configure').register(program);
