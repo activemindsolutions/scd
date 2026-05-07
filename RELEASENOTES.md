@@ -2,6 +2,32 @@
 
 ---
 
+## v1.2.12 (2026-05-07)
+
+This release introduces scope.yml — a dedicated mechanism for managing scan scope exclusions — along with two refactoring changes that improve code organisation.
+
+**scope.yml — scan scope management.** Developers can now explicitly exclude files, directories, and security rules from scanning via `scope.yml`. Exclusions are security decisions, not operational config: every entry requires a documented reason, records who made it and when, and is prominently displayed in every scan that applies it. Nothing is silently skipped.
+
+Three scope sources are merged in priority order: `~/.scd/scope.yml` (global, all repos), `~/.scd/repos/{id}/scope.yml` (per-repo), and `~/.scd/repos/{id}/scope-server.yml` (server-managed, delivered via heartbeat in a future release). The server source takes precedence when a server URL is configured; the server never touches global scope.
+
+Exclusions are managed via `scd scope` (global) and `scd repo scope` (per-repo):
+
+```
+scd repo scope --add-file "tests/fixtures/" --reason "Test fixtures with intentional vulns"
+scd repo scope --add-rule INFRA-001 --reason "Cloud-managed infrastructure"
+scd repo scope --add-rule JS-ERR-002 --files "lib/rules/,**/*.test.js" --reason "Rule definition files"
+scd repo scope --remove-file "tests/fixtures/" --reason "No longer needed"
+scd repo scope --show
+```
+
+Every scan shows a `⚠ Active scope exclusions` block when exclusions are active, with pattern/rule, reason, added_by, and timestamp per entry. Exclusions are also logged to `audit.log` and stored in the scan JSON `exclusions` field.
+
+**`lib/gitignore-filter.js` renamed to `lib/file-filter.js`.** The module's responsibility extends beyond git-specific filtering — it now also applies scope.yml file exclusions. The rename reflects the broader scope. `buildIgnoreFilter()` is unchanged.
+
+**`getMachineFingerprint()` moved to `lib/store.js`.** The installation identity function now lives alongside other identity functions (`getRepoId()`, `getRepoIdentity()`) rather than inside the push-queue module where it happened to first be needed. Both `push-queue.js` and the new scope commands import it from `store.js`.
+
+---
+
 ## v1.2.11 (2026-05-06)
 
 This release completes the CLI refactoring by splitting `bin/scd.js` into individual command modules.
