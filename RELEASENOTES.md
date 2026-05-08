@@ -2,6 +2,36 @@
 
 ---
 
+## v1.2.14 (2026-05-08)
+
+This release improves CLI consistency by replacing flags that acted as verbs with proper subcommands, and adds repo-scoped aliases for findings and exceptions.
+
+**Verb flags converted to subcommands.** Several flags performed actions rather than configuring behaviour, which is inconsistent with CLI conventions. These have been promoted to subcommands:
+
+`scd report open` replaces `scd report --open`. `scd report serve` replaces `scd report --serve`. The `--port` and `--index` options remain as flags on `scd report serve`. `scd report` (without a subcommand) still generates a report — nothing is removed, just clarified.
+
+`scd repo show` replaces `scd repo --show`. `scd repo scans` replaces `scd repo --scans`. `scd repo reports` replaces `scd repo --reports`. `scd repo open` replaces `scd repo --open`. `scd repo open-reports` replaces `scd repo --open-reports`. `scd repo --path` is retained as a flag (scripting convention, consistent with `git rev-parse --show-toplevel`).
+
+**`scd list verify` — store verification moved to the right place.** `scd repo --verify` (and `--clean`) operated on all known repos globally, not on the current repo — making it a poor fit under `scd repo`. Verification is now `scd list verify`, with `--clean` for interactive cleanup, `--verbose` for detail, and `--json` for machine-readable output. This groups global store management with `scd list` where it belongs semantically.
+
+**`scd repo findings` and `scd repo exceptions` added.** Both commands are now available under `scd repo` as aliases for their top-level equivalents, supporting a repo-centric workflow where everything related to the current repo is in one place. Output is identical to `scd findings` and `scd exceptions`.
+
+**`scd findings` action extracted for reuse.** The findings action logic is now exported as `findingsAction()` from `lib/commands/findings.js`, allowing `scd repo findings` to delegate without duplicating code.
+
+---
+
+## v1.2.13 (2026-05-07)
+
+This release centralises all terminal styling constants and fixes a bug where running `scd repo` in an unknown directory would silently create store entries.
+
+**`lib/output-constants.js` — single source of truth for terminal styling.** All ANSI colour constants (`RESET`, `BOLD`, `DIM`, `RED`, `GREEN`, `YELLOW`, `BLUE`, `CYAN`) and symbols (`OK`, `FAIL`, `WARN`, `DASH`, `SEP`) are now defined in one place. All 35 lib and command files have been updated to import from `output-constants` instead of defining colours locally. Raw escape codes (`\x1b[36m` etc.) no longer appear anywhere in the codebase outside this file. `\x1b[2m` (true dim) has been normalised to `\x1b[90m` (bright black) for consistency across terminals. No functional changes — output is identical before and after.
+
+**`scd repo` no longer creates store directories for unknown repos.** Running `scd repo` (or any repo-level flag) in a directory that has never been scanned or initialised would previously create an empty `~/.scd/repos/{id}/` directory, causing orphan entries to accumulate in `scd list` over time. A new `isRepoKnown()` function in `store.js` checks for `meta.json` existence without creating any directories. If the repo is unknown, `scd repo` now shows an informative message with `scd init` and `scd scan` as next steps and exits cleanly. `scd repo --verify` (now `scd list verify`) is exempt from this guard as it operates on all known repos, not the current directory.
+
+**`scd audit` re-registered.** The `scd audit` command had been inadvertently dropped from `bin/scd.js` during a previous refactoring. It is now restored.
+
+---
+
 ## v1.2.12 (2026-05-07)
 
 This release introduces scope.yml — a dedicated mechanism for managing scan scope exclusions — along with two refactoring changes that improve code organisation.
