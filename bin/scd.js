@@ -13,12 +13,17 @@ const program = new Command();
 
 const pkg = require('../package.json');
 
-const { RULES_VERSION } = require('../lib/rule-registry');
 
 program
   .name('scd')
-  .description('Secure Code by Design – automated security scanning')
-  .version(pkg.version + '  (rules ' + RULES_VERSION + ')');
+  .description('Secure Code by Design – automated security scanning');
+
+// Handle --version / -V before Commander parses — shows scd version output
+// identical to `scd version`, instead of Commander's default single-line format.
+if (process.argv.includes('--version') || process.argv.includes('-V')) {
+  require('../lib/commands/version').showVersion();
+  process.exit(0);
+}
 
 require('../lib/commands/scan').register(program);
 
