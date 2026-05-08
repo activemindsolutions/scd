@@ -218,9 +218,9 @@ test('scd repo --help exits 0', () => {
   assert.strictEqual(run('repo --help').status, 0);
 });
 
-test('scd repo --help lists key flags and subcommands', () => {
+test('scd repo --help lists key subcommands', () => {
   const out = run('repo --help').stdout + run('repo --help').stderr;
-  for (const token of ['configure', 'hooks', '--verify', '--show', '--scans']) {
+  for (const token of ['configure', 'hooks', 'scope', 'show', 'scans', 'reports', 'open']) {
     assert.ok(out.includes(token), `repo --help missing token: ${token}`);
   }
 });
@@ -231,6 +231,57 @@ test('scd repo configure --help exits 0', () => {
 
 test('scd repo hooks --help exits 0', () => {
   assert.strictEqual(run('repo hooks --help').status, 0);
+});
+
+test('scd repo show --help exits 0', () => {
+  assert.strictEqual(run('repo show --help').status, 0);
+});
+
+test('scd repo scans --help exits 0', () => {
+  assert.strictEqual(run('repo scans --help').status, 0);
+});
+
+test('scd repo reports --help exits 0', () => {
+  assert.strictEqual(run('repo reports --help').status, 0);
+});
+
+test('scd repo open --help exits 0', () => {
+  assert.strictEqual(run('repo open --help').status, 0);
+});
+
+test('scd repo open-reports --help exits 0', () => {
+  assert.strictEqual(run('repo open-reports --help').status, 0);
+});
+
+test('scd list verify --help exits 0', () => {
+  assert.strictEqual(run('list verify --help').status, 0);
+});
+
+test('scd list verify --help mentions --clean and --verbose', () => {
+  const out = run('list verify --help').stdout + run('list verify --help').stderr;
+  assert.ok(out.includes('--clean'),   'list verify --help missing --clean');
+  assert.ok(out.includes('--verbose'), 'list verify --help missing --verbose');
+});
+
+// REGRESSION: old flags that must no longer exist on scd repo
+test('REGRESSION: scd repo --verify must not exist (moved to scd list verify)', () => {
+  const out = run('repo --help').stdout + run('repo --help').stderr;
+  assert.ok(!out.includes('--verify'), 'scd repo --verify still exists — should be scd list verify');
+});
+
+test('REGRESSION: scd repo --show must not exist (moved to scd repo show)', () => {
+  const out = run('repo --help').stdout + run('repo --help').stderr;
+  assert.ok(!out.includes('--show'), 'scd repo --show still exists — should be scd repo show');
+});
+
+test('REGRESSION: scd report --serve must not exist (moved to scd report serve)', () => {
+  const out = run('report --help').stdout + run('report --help').stderr;
+  assert.ok(!out.includes('--serve'), 'scd report --serve still exists — should be scd report serve');
+});
+
+test('REGRESSION: scd report --open must not exist (moved to scd report open)', () => {
+  const out = run('report --help').stdout + run('report --help').stderr;
+  assert.ok(!out.includes('--open'), 'scd report --open still exists — should be scd report open');
 });
 
 // ---------------------------------------------------------------------------
@@ -280,11 +331,25 @@ test('scd report --help exits 0', () => {
   assert.strictEqual(run('report --help').status, 0);
 });
 
-test('scd report --help mentions key flags', () => {
+test('scd report --help mentions key flags and subcommands', () => {
   const out = run('report --help').stdout + run('report --help').stderr;
-  for (const flag of ['--serve', '--scan', '--open']) {
-    assert.ok(out.includes(flag), `report --help missing flag: ${flag}`);
+  for (const token of ['--scan', '--format', '--output', 'open', 'serve']) {
+    assert.ok(out.includes(token), `report --help missing token: ${token}`);
   }
+});
+
+test('scd report open --help exits 0', () => {
+  assert.strictEqual(run('report open --help').status, 0);
+});
+
+test('scd report serve --help exits 0', () => {
+  assert.strictEqual(run('report serve --help').status, 0);
+});
+
+test('scd report serve --help mentions --port and --index', () => {
+  const out = run('report serve --help').stdout + run('report serve --help').stderr;
+  assert.ok(out.includes('--port'), 'report serve --help missing --port');
+  assert.ok(out.includes('--index'), 'report serve --help missing --index');
 });
 
 test('scd audit --help exits 0', () => {
