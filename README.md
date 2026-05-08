@@ -84,8 +84,8 @@ scd scan --verbose
 scd report
 
 # Open the report in your browser
-scd report --open          # macOS / Windows
-scd report --serve         # Linux / Firefox (starts local HTTP server)
+scd report open            # macOS / Windows
+scd report serve           # Linux / Firefox (starts local HTTP server)
 ```
 
 ---
@@ -110,8 +110,9 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 | Command | Description |
 |---|---|
 | `scd report` | Generate report from last scan (HTML default) |
-| `scd report --serve` | Serve report via local HTTP server |
-| `scd report --serve --index` | Always show report index page |
+| `scd report open` | Generate report and open in browser |
+| `scd report serve` | Serve report via local HTTP server |
+| `scd report serve --index` | Always show report index page |
 | `scd report --scan <id>` | Generate report from a specific saved scan |
 | `scd export-findings` | Export all findings from a scan to JSON |
 | `scd export-findings --deep-only` | Export only findings that have a deep analysis result |
@@ -158,10 +159,13 @@ scd report --serve         # Linux / Firefox (starts local HTTP server)
 | `scd rules --stats` | Rule counts by severity and language |
 | `scd list` | List all repos registered in store |
 | `scd repo` | Show store info for current repo |
-| `scd repo --show` | Full metadata for current repo |
-| `scd repo --scans` | List all saved scans |
-| `scd repo --verify` | Verify all repos exist on disk |
-| `scd repo --verify --clean` | Interactive cleanup of missing/stale repos |
+| `scd repo show` | Full metadata for current repo |
+| `scd repo scans` | List all saved scans |
+| `scd repo reports` | List saved reports for this repo |
+| `scd repo findings` | List findings for this repo (alias for scd findings) |
+| `scd repo exceptions` | List exceptions for this repo (alias for scd exceptions) |
+| `scd list verify` | Verify all repos exist on disk |
+| `scd list verify --clean` | Interactive cleanup of missing/stale repos |
 | `scd repo configure` | Show per-repo configuration with source (repo/global/default) |
 | `scd repo configure --scan-mode <fast\|full>` | Set scan mode for this repo |
 | `scd repo configure --trust-level <value>` | Set trust level for this repo |
@@ -254,7 +258,7 @@ All scan data, configs and reports are stored outside your repository:
 Every scan is saved with a unique random ID (`s-a3f9b2c1`). This ID is timezone-neutral and is also used as `session_id` on the server for full traceability.
 
 ```bash
-scd repo --scans                   # list all saved scans
+scd repo scans                     # list all saved scans
 scd report --scan s-a3f9b2c1       # regenerate report from a specific scan
 ```
 
@@ -278,7 +282,7 @@ Most affected files:
    🔴  11  WS_setProjectDetails.php  (Lines: 33, 51, 54, 62, …)
    ...
 
-  Full details:  scd report --open   or   scd report --serve
+  Full details:  scd report open   or   scd report serve
   All findings:  scd scan --verbose   or   scd export-findings
 ```
 
