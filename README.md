@@ -10,7 +10,7 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 
 ## Features
 
-- **174 security rules** across JavaScript, TypeScript, Python, PHP, ASP.NET, and more
+- **182 security rules** across JavaScript, TypeScript, Python, PHP, ASP.NET, and more
 - **Taint analysis** — tracks user-controlled variables from HTTP input to dangerous sinks
 - **Git hooks** – secrets scanning on pre-commit, full OWASP scan on pre-push
 - **Zero repo footprint** – no files written or modified to your repository
@@ -24,6 +24,7 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 - **Audit trail** – append-only scan history per repository
 - **`.gitignore` respected** – files git ignores are excluded from scans by default; use `--include-ignored` to override
 - **Scan scope management** – explicitly exclude files, directories, or rules with documented reasons via `scope.yml`; every exclusion is tracked in scan output and audit log
+- **Pipeline-friendly** – works as a subprocess or in CI/CD without a TTY; use `--log-to` to control logging behaviour in automated contexts
 
 ## Team & Premium
 
@@ -51,7 +52,7 @@ See [securecodebydesign.com](https://securecodebydesign.com) for plans and prici
 
 **Windows:** Windows 10 (build 1803) or later required. Git for Windows must be installed (not WSL). Windows Terminal or PowerShell recommended — `cmd.exe` has limited ANSI colour support.
 
-> On Windows, the store directory is `%USERPROFILE%\.scd\` (e.g. `C:\Users\YourName\.scd\`). All `~/.scd` references in this documentation refer to this path on Windows.
+> On Windows, the store directory is `%USERPROFILE%\\.scd\\` (e.g. `C:\\Users\\YourName\\.scd\\`). All `~/.scd` references in this documentation refer to this path on Windows.
 
 ---
 
@@ -102,8 +103,46 @@ scd report serve           # Linux / Firefox (starts local HTTP server)
 | `scd scan --include-vendor` | Include vendor/dependency code in scan |
 | `scd scan --vendor-only` | Scan only vendor/dependency code (supply chain) |
 | `scd scan --include-ignored` | Scan files excluded by `.gitignore` (default: respect `.gitignore`) |
+| `scd scan --exclude <pattern>` | Exclude a file or directory for this scan only (repeatable, not saved) |
+| `scd scan --exclude-rule <id>` | Exclude a rule for this scan only (repeatable, not saved) |
+| `scd scan --log-to <mode>` | Logging mode for non-interactive use: `none`, `current`, `target` (see below) |
 | `scd scan --no-sync` | Skip pushing this scan to scd-server (audit log kept locally) *(Premium)* |
 | `scd scan --no-audit` | Skip audit logging entirely for this scan |
+
+#### `--exclude` and `--exclude-rule` — one-off scan exclusions
+
+Exclude files or rules for a single scan without modifying `scope.yml`. Useful for quick ad-hoc filtering or testing rule changes.
+
+```bash
+scd scan --exclude "tests/fixtures/" --exclude-rule INFRA-002
+```
+
+One-off exclusions are shown in scan output, stored in the scan JSON, and never written to disk. For permanent exclusions, use `scd repo scope`.
+
+#### `--log-to` — non-interactive and pipeline use
+
+When `scd scan` is used as a subprocess or in a CI/CD pipeline without a TTY, it automatically detects the missing terminal and scans without logging — no prompt, no hanging. A single informational line is written to stderr.
+
+Use `--log-to` when you need explicit control over logging in non-interactive contexts:
+
+| Value | Behaviour |
+|---|---|
+| `none` | Scan without logging, no prompt (same as auto-detect default) |
+| `current` | Log results to the current working directory's repo, no prompt |
+| `target` | Log results to the target repository's repo, no prompt |
+
+```bash
+# Automated pipeline — no TTY, no prompt, output file always written
+scd scan ./repo --format json --output results.json
+
+# Cron job — scan and log results to current repo
+scd scan . --log-to current
+
+# Explicit no-logging
+scd scan . --log-to none
+```
+
+Normal interactive behaviour (with a TTY and no `--log-to`) is completely unchanged.
 
 ### Reports
 
@@ -189,6 +228,8 @@ scd report serve           # Linux / Firefox (starts local HTTP server)
 
 All scope exclusions require a `--reason`. Active exclusions are shown prominently in every scan.
 
+For one-off per-scan exclusions without modifying `scope.yml`, use `scd scan --exclude` and `scd scan --exclude-rule`.
+
 ### Setup & configuration
 
 | Command | Description |
@@ -214,7 +255,7 @@ All scope exclusions require a `--reason`. Active exclusions are shown prominent
 | HIGH | 71 |
 | MEDIUM | 10 |
 | EXPOSURE | 30 |
-| **Total** | **174** |
+| **Total** | **182** |
 
 Languages covered: JavaScript, TypeScript, Python, PHP, ASP.NET (markup + C#).
 Covers all OWASP Top 10 categories. Run `scd rules --stats` for full breakdown.
@@ -227,7 +268,7 @@ Covers OWASP Top 10 categories including Injection, Broken Access Control, Crypt
 
 ### Git hooks
 
-`scd init` configures git to use a shared hooks directory (`~/.scd/hooks` on macOS/Linux, `%USERPROFILE%\.scd\hooks` on Windows):
+`scd init` configures git to use a shared hooks directory (`~/.scd/hooks` on macOS/Linux, `%USERPROFILE%\\.scd\\hooks` on Windows):
 
 ```
 pre-commit  → fast secrets scan (blocks CRITICAL findings)
@@ -423,9 +464,6 @@ scd is intentionally lightweight. Keeping the dependency surface small is a deli
 | Package | Version | Purpose |
 |---|---|---|
 | [commander](https://github.com/tj/commander.js) | ^14.0.3 | CLI argument parsing and subcommand structure |
-| [@anthropic-ai/sdk](https://github.com/anthropic-ai/sdk-node) | latest | Deep analysis via Claude API (`scd scan --deep` only) |
-
-`@anthropic-ai/sdk` is only used when `scd scan --deep` is invoked with a connected scd-server. It is never called automatically and never sends data without explicit user action.
 
 No other runtime dependencies. Node.js built-in modules handle everything else.
 
