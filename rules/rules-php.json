@@ -79,7 +79,7 @@
       "category": "Injection (OWASP A03)",
       "taint_aware": true,
       "taint_extract": "interpolation",
-      "pattern": "\\\"[^\\n\\\"]{0,300}\\$(?!_GET|_POST|_REQUEST|_COOKIE|_SESSION|stmt|pdo|conn|db)[a-zA-Z_]\\w*[^\\n\\\"]{0,100}\\\"",
+      "pattern": "\"[^\\n\"]{0,200}(?:SELECT|INSERT|UPDATE|DELETE|WHERE|FROM|INTO|SET|VALUES|JOIN|CREATE|ALTER|DROP|REPLACE|EXEC(?:UTE)?)[^\\n\"]{0,150}\\$(?!_GET|_POST|_REQUEST|_COOKIE|_SESSION|stmt|pdo|conn|db)[a-zA-Z_]\\w*[^\\n\"]{0,80}\"",
       "flags": "gi",
       "antipattern": "sqlsrv_query|mysqli_query|\\$(?:stmt|pdo)->(?:prepare|execute)|^\\s*(?:\\/\\/|#|\\*)",
       "antipattern_flags": "i",
@@ -87,7 +87,7 @@
       "file_types": [
         "php"
       ],
-      "why": "A variable assigned from user input ($_GET/$_POST) is interpolated directly into a SQL string.",
+      "why": "A variable assigned from user input ($_GET/$_POST) is interpolated directly into a SQL string. The SQL keyword in the string confirms injection context.",
       "scenario": "Developer assigns $username = $_POST[\"username\"] then interpolates it in SQL — attacker can inject arbitrary SQL.",
       "fix": "Use parameterised queries. Never interpolate variables into SQL strings."
     },

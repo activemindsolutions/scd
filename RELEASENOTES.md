@@ -1,5 +1,37 @@
 # scd – Release Notes
 
+## v1.2.16
+
+This release makes `scd scan` usable in automated pipelines, CI/CD environments, and any context without a terminal — while leaving interactive behaviour completely unchanged.
+
+**The problem.** When `scd scan` is used as a subprocess (for example, spawned from Node.js with `stdio: ['ignore', 'pipe', 'pipe']`), it would hang or exit silently without writing the requested output file. The cause was `resolveTargetContext()` showing an interactive prompt using `readline` regardless of whether a terminal was available. Without a TTY, stdin is closed and readline stalls or exits immediately, leaving the output file unwritten.
+
+**No-TTY auto-detect.** When `process.stdin.isTTY` is false and no `--log-to` flag is given, scd now automatically selects "scan without logging" and writes a single informational line to stderr:
+
+```
+ℹ Non-interactive mode: scanning without logging. Use --log-to current|target to log results.
+```
+
+The scan proceeds normally, output files are written, and the process exits cleanly.
+
+**`--log-to <mode>` flag.** For non-interactive contexts where logging is desired — cron jobs, scheduled tasks, server-side automation — the new `--log-to` flag bypasses the prompt with an explicit intent:
+
+- `--log-to none` — scan without logging, no prompt (equivalent to auto-detect default)
+- `--log-to current` — log results to the current working directory's repo, no prompt. Exits with an error if the CWD is not a known scd repo.
+- `--log-to target` — log results to the target repository, no prompt. Falls back to no-logging with a warning if the target is outside any git repository.
+
+This follows the convention of tools like `apt-get -y` and `git commit --no-edit` — non-interactive operation is opt-in and explicit.
+
+**Interactive behaviour is unchanged.** When running in a normal terminal without `--log-to`, the existing prompt flow is preserved exactly as before. The no-TTY detection only activates when `process.stdin.isTTY` is false.
+
+---
+
+## v1.2.15 (2026-05-08)
+
+This release unifies the output of `scd --version` and `scd version`, which previously produced different results.
+
+**`scd --version` and `scd version` now produce identical output.** The version flag (`scd --version` or `scd -V`) previously printed only the bare version number, while `scd version` showed a full formatted block with rule counts and system information. The output logic has been extracted into a shared `showVersion()` function in `lib/commands/version.js`. `bin/scd.js` now intercepts `--version` and `-V` before Commander processes them and calls `showVersion()` directly, producing the same rich output in both cases.
+
 ---
 
 ## v1.2.14 (2026-05-08)
