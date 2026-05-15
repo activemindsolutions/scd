@@ -1,5 +1,48 @@
 # scd – Release Notes
 
+## v1.3.0 (2026-05-15)
+
+This release introduces file context awareness — a new intelligence layer that classifies files before security rules are applied and adjusts finding severity based on context. The result is a significant reduction in false positives without changing a single rule pattern.
+
+**The problem.** scd's rules are strong at pattern detection but context-blind. A hardcoded password in a test fixture and a hardcoded password in production code are both flagged at the same severity — even though their risk profiles are fundamentally different. On a representative set of 88 real-world repositories, this caused disproportionate noise from test files, generated code, and vendor dependencies.
+
+**File context classification.** A new module (`lib/file-context.js`) classifies every file before any rule runs. Classification uses two layers. Layer 1 reads path and filename signals: vendor directories, generated output (`/dist/`, `/build/`, `/gen/`), test paths (`/tests/`, `/spec/`, `/__tests__/`), and test filename patterns (`*.test.js`, `*_test.py`). Layer 2 reads the first 50 lines of content to confirm tentative classifications — a file named `vulnerable-test.js` that contains no test framework code is classified as source, not test. Vendor and generated files are classified definitively from path alone; all other test and fixture classifications require content confirmation.
+
+Test framework detection covers: Jest, Vitest, Mocha, Pytest, PHPUnit (including indirect inheritance via `use PHPUnit\` and `namespace \Test\` patterns), and RSpec.
+
+**Severity modifiers.** A new module (`lib/context-modifiers.js`) applies cumulative severity modifiers based on classification. Modifiers are additive: a Jest test in a `/fixtures/` path accumulates both the test modifier and the fixture path modifier. Config files receive a modifier of zero — a `.env` file with a real secret is still a real finding regardless of context. The suppress threshold is fixed at zero: any finding whose effective score falls to zero or below is flagged suppressed rather than deleted.
+
+**No silent suppression.** Every finding is created. Suppressed findings live in a separate `suppressed_findings[]` key in scan JSON and are always accessible. This preserves a complete audit trail, which is relevant for CRA Article 13 and NIS2 Article 21 evidence requirements.
+
+**CLI output.** When suppressions exist, `scd scan` shows a summary line after the findings list:
+
+```
+  10 finding(s) suppressed by file context  ·  scd findings --show-suppressed
+```
+
+`scd findings --show-suppressed` lists suppressed findings with full detail: base severity, effective score, file context classification, each modifier with its value, and suppress reason. Normal findings output now shows a severity downgrade indicator (`↓ HIGH → MEDIUM`) when context modifiers reduced but did not suppress a finding.
+
+**Suppressed findings are persisted.** Scan cache (`last-scan.json`) includes `suppressed_findings` so `scd findings --show-suppressed` works across sessions without re-scanning.
+
+**Measured impact.** On 88 representative repositories:
+
+| Metric | Before | After | Change |
+|---|---|---|---|
+| Total findings | 14,801 | 10,317 | −4,484 (−30.3%) |
+| INFRA family | 7,878 | 4,407 | −3,471 (−44.1%) |
+| INFRA-002 (127.0.0.1) | 1,570 | 687 | −56% |
+| INFRA-012 (192.168.x.x) | 558 | 55 | −90% |
+| TS-TYPE-001 (as any) | 463 | 123 | −73% |
+| INFRA-030 (DB port) | 82 | 4 | −95% |
+
+No unexpected reductions in CRITICAL or HIGH findings on production source files were observed.
+
+**`.gitignore` glob parsing fixed.** A pre-existing bug in `lib/file-filter.js` caused scans to crash with `Invalid regular expression: /^*\.db/` when the target repository's `.gitignore` contained rooted glob patterns such as `/*.db`. The fix reorders glob-to-regex conversion so `*` and `**` are marked as placeholders before regex special character escaping — preventing them from landing verbatim in the compiled pattern. Additionally, a double `$` in the non-directory suffix pattern (`(/|$|$)`) has been corrected to `(/|$)`.
+
+**Unit tests.** 36 new unit tests in `tests/unit/file-context.test.js` cover definitive classifications, content-confirmed test detection, tentative-to-source downgrade, no-content fallback, and modifier arithmetic. All 176 tests pass.
+
+---
+
 ## v1.2.16
 
 This release makes `scd scan` usable in automated pipelines, CI/CD environments, and any context without a terminal — while leaving interactive behaviour completely unchanged.
