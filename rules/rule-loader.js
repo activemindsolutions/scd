@@ -238,6 +238,11 @@ function loadRule(raw, source) {
     service:          raw.service          ?? undefined,
     resolve_hint:     raw.resolve_hint     ?? undefined,
     source:           source               || 'builtin',
+    // scan_comments: true — rule intentionally matches comment line content.
+    // Opts out of the global comment-line suppression in scanFileWithRules().
+    // Use only for rules whose pattern explicitly targets comment syntax
+    // (e.g. @ts-ignore, TODO/FIXME with sensitive data, commented-out secrets).
+    scanComments:     raw.scan_comments    ?? false,
   };
 
   // ── Antipattern ─────────────────────────────────────────────────────────

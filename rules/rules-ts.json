@@ -38,6 +38,7 @@
       "category": "Security Misconfiguration (OWASP A05)",
       "pattern": "\\/\\/\\s*@ts-(?:ignore|expect-error)[^\\n]*\\n[^\\n]{0,150}(?:query|exec|eval|password|token|secret|auth|cookie|session|sql|mongo|redis|fetch|axios|http)",
       "flags": "gi",
+      "scan_comments": true,
       "why": "@ts-ignore and @ts-expect-error tell the compiler to skip type checking for the next line. When placed before database calls, authentication logic, or HTTP requests, they hide exactly the type errors that would reveal unsafe data flow — often the same errors that signal an injection or auth bypass.",
       "scenario": "AI adds // @ts-ignore above db.query(\"SELECT * FROM users WHERE id=\" + userId) to suppress \"Argument of type string | undefined is not assignable to parameter of type string\". The suppression hides that userId might be undefined or attacker-controlled.",
       "fix": "Fix the underlying type error instead of suppressing it. If the suppression is hiding an \"X | undefined\" error, add a null check. If it is hiding an incompatible type, add validation. @ts-ignore should never appear near data access or authentication code."
