@@ -123,7 +123,7 @@
       "name": "Non-public TLD in hardcoded URL (.local, .internal, .corp, .lan)",
       "severity": "EXPOSURE",
       "category": "Infrastructure Leakage",
-      "pattern": "https?:\\/\\/[a-z0-9.-]+\\.(?:local|internal|corp|intranet|lan|priv|home|localdomain)(?::\\d{2,5})?(?:\\/[^\\s\"'`]*)?",
+      "pattern": "https?:\\/\\/[a-z0-9.-]+\\.(?:local|internal|corp|intranet|lan|priv|home|localdomain)(?=[:/\\s\"'`]|$)(?::\\d{2,5})?(?:\\/[^\\s\"'`]*)?",
       "flags": "gi",
       "antipattern_preset": "LINK_EXAMPLE",
       "antipattern_flags": "i",
