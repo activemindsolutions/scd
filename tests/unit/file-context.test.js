@@ -71,6 +71,37 @@ function makeFinding(severity, filePath = 'src/auth.js') {
 // buildFileContext
 // ══════════════════════════════════════════════════════════════════════════
 
+describe('buildFileContext — strong filename + test path (definitive)', () => {
+
+  test('*.test.ts + tests/ path → definitive test', () => {
+    const ctx = buildFileContext('tests/integration/ci/integration.test.ts', null);
+    assert.equal(ctx.fileType, FILE_TYPES.TEST);
+  });
+
+  test('test_*.py + tests/ path → definitive test', () => {
+    const ctx = buildFileContext('tests/components/pi_hole/test_config_flow.py', null);
+    assert.equal(ctx.fileType, FILE_TYPES.TEST);
+  });
+
+  test('*.test.mjs + tests/ path → definitive test', () => {
+    const ctx = buildFileContext('tests/agent-pool.test.mjs', null);
+    assert.equal(ctx.fileType, FILE_TYPES.TEST);
+  });
+
+  test('*.test.ts in src/ (no test path) → source (no content)', () => {
+    // Strong filename but not in a test directory — tentative, no content → source
+    const ctx = buildFileContext('src/auth/session.test.ts', null);
+    assert.equal(ctx.fileType, FILE_TYPES.SOURCE);
+  });
+
+  test('*.test.js in src/models/ (no test path) → source (no content)', () => {
+    // Evasion attempt: customer file named *.test.js — must not bypass scanning
+    const ctx = buildFileContext('src/models/kunddata.test.js', null);
+    assert.equal(ctx.fileType, FILE_TYPES.SOURCE);
+  });
+
+});
+
 describe('buildFileContext — definitive classifications', () => {
 
   test('vendor: node_modules path', () => {
@@ -179,11 +210,11 @@ describe('buildFileContext — tentative downgraded to source', () => {
 
 describe('buildFileContext — no content available', () => {
 
-  test('*.test.js + no content → test (tentative committed)', () => {
-    // Secrets scanner calls buildFileContext without content —
-    // tentative type is used as-is (best available signal).
+  test('*.test.js in src/ + no content → source (filename-only tentative)', () => {
+    // Filename-only tentative is not committed without content — security requirement.
+    // A *.test.js file outside a test directory might be a misnamed production file.
     const ctx = buildFileContext('src/auth.test.js', null);
-    assert.equal(ctx.fileType, FILE_TYPES.TEST);
+    assert.equal(ctx.fileType, FILE_TYPES.SOURCE);
   });
 
   test('/tests/ path + no content → test (tentative committed)', () => {

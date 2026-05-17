@@ -18,7 +18,7 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 - **HTML, Markdown and JSON reports** with fix guidance for each finding
 - **Deep analysis** – optional AI-powered analysis via scd-server; requires the Deep Analysis Pack (Premium)
 - **Per-scan storage** – every scan saved with a unique random ID (`s-a3f9b2c1`), never overwritten; regenerate reports from any historical scan
-- **Finding IDs** – every finding gets a stable ID (`f-a1b2c3d4`) shown in scan output, reports and export — use directly with `scd accept` and `scd ignore`
+- **Finding IDs** – every finding gets a stable ID (`f-a1b2c3d4e5e5`) shown in scan output, reports and export — use directly with `scd accept` and `scd ignore`
 - **Exception management** – reviewed exceptions tracked in config, never as code comments
 - **Exception sync** – pull team-lead approvals from scd-server, sync rejected back with reason
 - **Audit trail** – append-only scan history per repository
@@ -361,10 +361,10 @@ Exceptions are managed by finding ID — shown in scan output, reports, and `scd
 scd findings
 
 # Accept a risk (requires team-lead approval via scd-server)
-scd accept f-a1b2c3d4 --reason "Parameterized internally, validated input only"
+scd accept f-a1b2c3d4e5 --reason "Parameterized internally, validated input only"
 
 # Ignore a finding (false positive, out of scope etc.)
-scd ignore f-a1b2c3d4 --reason "Source maps intentionally included in staging" \
+scd ignore f-a1b2c3d4e5 --reason "Source maps intentionally included in staging" \
   --tag false_positive
 
 # Pull approvals/rejections from team server
