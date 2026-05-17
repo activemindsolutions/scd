@@ -1,5 +1,49 @@
 # scd – Release Notes
 
+## v1.3.1 (2026-05-15)
+
+This release overhauls how scd decides which files to scan — moving from post-scan severity compensation to pre-scan file routing. The result is a structurally sounder false positive reduction and a 50% total reduction in findings versus the v1.2.16 baseline across 88 representative repositories.
+
+**The problem with the previous approach.** v1.3.0 introduced file context classification and severity modifiers — a meaningful improvement, but architecturally limited. Modifiers ran *after* rules had already fired. A test file could be correctly identified as a test file, but if a SECRET-005 rule produced a HIGH finding, the modifier reduced it to MEDIUM — still above the suppress threshold. The file context was known, but too late to act on it cleanly.
+
+**Pre-scan file manifest.** A new module (`lib/file-manifest.js`) classifies every file in the scan queue into a scan context *before* any rule runs. Three contexts are defined:
+
+- **source** — production code, scanned with the full rule set
+- **test** — test and fixture files, routed to a separate rule set (currently a defined stub; test-specific rules will be introduced in a future release)
+- **excluded** — vendor and generated files, not scanned, documented in scan output
+
+Classification uses `lib/file-context.js` internally with two-layer detection (path/filename signals confirmed by content). The conservative principle applies: when classification is uncertain, the file is treated as source. A file in `/tests/` without any recognisable test framework import is treated as source, not test — intentional, because misclassifying production code as test is a worse error than the reverse.
+
+A `fileContexts` map is built once per scan and shared across all scanner passes, including the secrets scanner. This prevents a class of mismatch bugs where different passes reached different classification conclusions for the same file.
+
+**Scan context summary in terminal output.** Before scanning begins, scd shows a one-line manifest summary:
+
+```
+  312 source · 47 test (separate context) · 12 excluded (vendor/generated)
+```
+
+This appears early — before analysis starts — consistent with the principle that important information must never be deferred.
+
+**Strong filename classification.** Files with unambiguous test naming conventions (`.test.js`, `.spec.ts`, `test_*.py`, `_test.go`) that also reside in a recognised test path (`/tests/`, `/spec/`, `/__tests__/` etc.) are classified as test definitively, without requiring content confirmation. Files matching the naming pattern but located outside test paths remain tentative and require content confirmation — a file named `kunddata.test.js` in `/src/models/` is treated as source unless its content confirms test framework usage.
+
+**bun:test framework detection.** `from 'bun:test'` and `require('bun:test')` added to `FRAMEWORK_CONTENT_SIGNALS`. Bun's test runner is now recognised as a definitive content signal alongside Jest, Vitest, Pytest, node:test, and 10 other frameworks.
+
+**Internal finding trace (`_trace`).** Every finding now carries an internal `_trace` object recording the full classification pipeline: manifest context, file type, signals, each modifier with its delta and reason, comment line type, effective score, and suppress decision. The trace is written to all scan JSON files but never shown in terminal output or reports. Enable with `SCAN_TRACE=true` in `~/.scd/config` (not exposed via `scd configure` — internal analysis tool).
+
+**Finding ID collision fix.** Finding IDs are now computed from `ruleId + filePath + matched line content` rather than `ruleId + matched line content` alone. The previous algorithm produced identical IDs for different findings in different files when the matched line content was identical — a common occurrence with build artefacts (`.js` and `.cjs` variants of the same source file). IDs are now 10 hex characters (40 bits). **Breaking change:** existing finding IDs in `.scd/` (exceptions, resolved findings) will not match findings from new scans. Exceptions will need to be re-approved after upgrading.
+
+**Measured impact.** On 88 representative repositories versus v1.2.16 baseline:
+
+| Snapshot | Change | Findings | vs baseline |
+|---|---|---|---|
+| v1.2.16 | baseline | 14,801 | — |
+| v1.3.0 | file context + severity modifiers | 10,317 | −30.3% |
+| v1.3.1 | scan-context architecture + hash fix | 7,401 | −50.0% |
+
+The 50% reduction reflects genuine false positive elimination — no CRITICAL or HIGH findings on production source files were suppressed as a result of these changes.
+
+---
+
 ## v1.3.0 (2026-05-15)
 
 This release introduces file context awareness — a new intelligence layer that classifies files before security rules are applied and adjusts finding severity based on context. The result is a significant reduction in false positives without changing a single rule pattern.
