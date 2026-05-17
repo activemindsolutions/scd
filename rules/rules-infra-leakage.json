@@ -3,22 +3,68 @@
   "rules": [
     {
       "id": "INFRA-001",
-      "name": "Hardcoded localhost reference",
+      "name": "Hardcoded localhost URL in frontend code",
       "severity": "EXPOSURE",
       "category": "Infrastructure Leakage",
-      "pattern": "(?:[\"'`\\s(=,]|^|\\/{2}[^\\n]*?)(?:https?:\\/\\/)?localhost(?::\\d{2,5})?(?:[\\/\"'\\s),]|$)",
-      "flags": "gim",
-      "antipattern": "(?:example|sample|placeholder|TODO|FIXME|demo|mock|fake|dummy|test|spec|getenv|process\\.env|os\\.environ|System\\.getenv|\\$_ENV|\\$_SERVER|\\)\\s*[?:?]{1,2}\\s*['\"].*localhost|\\|\\|\\s*['\"].*localhost|,\\s*['\"]localhost['\"]|,\\s*default\\s*=\\s*['\"]localhost|fallback|==\\s*['\"]localhost|!=\\s*['\"]localhost|netloc|is_loopback|log\\.(?:debug|info|warning|error)|e\\.g\\.|i\\.e\\.)",
-      "antipattern_flags": "i",
-      "lookahead": 120,
-      "confidence_rules": [
-        { "if_file_context": ["test", "backend", "doc"], "then": "LOW"    },
-        { "if_file_context": "frontend",                 "then": "HIGH"   },
-        { "default": "MEDIUM" }
+      "pattern": "https?://localhost(?::\\d{2,5})?(?:/[^\\s\"'`]*)?",
+      "flags": "gi",
+      "extensions": ["js", "ts", "jsx", "tsx", "mjs", "cjs", "vue", "svelte", "html"],
+      "antipatterns": [
+        "===\\s*['\"]localhost",
+        "!==\\s*['\"]localhost",
+        "\\.includes\\s*\\(\\s*['\"]localhost",
+        "in\\s*\\([^)]*['\"]localhost",
+        "hostname\\s*(?:===|==|!==|!=)\\s*['\"]localhost",
+        "_BLOCKED|_BLOCKLIST|BLOCKED_HOST|block.*localhost|localhost.*block"
       ],
-      "why": "Hardcoded localhost references in frontend code indicate development-environment configuration that may have leaked into production builds. In browser-delivered code, localhost URLs always fail for end users and reveal internal service topology.",
-      "scenario": "A frontend config file contains `apiUrl: \"http://localhost:3000\"`. The build is deployed to production. The app silently fails for all users, and anyone inspecting the source bundle now knows your backend runs on port 3000 locally.",
-      "fix": "Replace hardcoded localhost with an environment variable: `process.env.API_URL` / `os.environ[\"API_URL\"]`. Use .env files locally and CI/CD secrets for production. Never hardcode host references in source code."
+      "antipattern_flags": "i",
+      "skip_for_file_types": ["test", "fixture"],
+      "why": "A hardcoded localhost URL was found in browser-delivered frontend code. In production, localhost always resolves to the end user's own machine — this URL will always fail for real users and reveals that development configuration leaked into production code.",
+      "scenario": "A React component, Vue file, or client-side JS module contains a hardcoded http://localhost:3000/api URL. In production, every API call fails silently or with a network error because localhost resolves to the user's own machine.",
+      "fix": "Replace the hardcoded URL with an environment variable: process.env.REACT_APP_API_URL or import.meta.env.VITE_API_URL. Configure the value per environment in .env files locally and CI/CD secrets in production."
+    },
+    {
+      "id": "INFRA-001B",
+      "name": "Localhost reference in committed config file",
+      "severity": "MEDIUM",
+      "category": "Infrastructure Leakage",
+      "pattern": "localhost",
+      "flags": "gi",
+      "extensions": ["yaml", "yml", "ini", "conf", "cfg", "env", "properties", "toml"],
+      "antipatterns": [
+        "expected.*localhost",
+        "#.*localhost",
+        "(?<![a-z:/])//.*localhost",
+        "Must be set if and only if",
+        "description.*localhost",
+        "comment.*localhost",
+        "localhost.*comment"
+      ],
+      "antipattern_flags": "i",
+      "skip_for_file_types": ["test", "fixture"],
+      "why": "A localhost reference was found in a committed configuration file. This is typically a development default that should be replaced with environment-specific configuration before deployment. Committed dev config can expose internal service topology and cause silent failures in non-local environments.",
+      "scenario": "A docker-compose.yml or alembic.ini committed to the repository contains APP_URL=http://localhost:8000. When another developer or CI pipeline uses this file, services fail to connect because localhost refers to their own machine, not the intended service.",
+      "fix": "Use environment variables or separate config files per environment (.env.local, .env.production). Never commit files with hardcoded localhost as a service endpoint. Use docker-compose.override.yml for local-only settings."
+    },
+    {
+      "id": "INFRA-001C",
+      "name": "Localhost reference in JSON data file",
+      "severity": "LOW",
+      "category": "Infrastructure Leakage",
+      "pattern": "https?://localhost(?::\\d{2,5})?",
+      "flags": "gi",
+      "extensions": ["json"],
+      "antipatterns": [
+        "i18n",
+        "translation",
+        "expected_failure",
+        "(?<![a-z:/])//.*localhost"
+      ],
+      "antipattern_flags": "i",
+      "skip_for_file_types": ["test", "fixture"],
+      "why": "A localhost reference was found in a JSON file. This may be a hardcoded development URL in API configuration, i18n strings, or data fixtures that could cause failures in non-local environments.",
+      "scenario": "A JSON configuration file or translation file contains a hardcoded localhost URL that was copied from a development environment and never replaced.",
+      "fix": "Replace hardcoded localhost references with environment-aware configuration or placeholder values. Ensure JSON config files use environment variable substitution where supported."
     },
     {
       "id": "INFRA-002",

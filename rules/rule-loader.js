@@ -224,7 +224,7 @@ function loadRule(raw, source) {
     ...raw,
     // Rename snake_case JSON fields to camelCase for scanner-full compatibility
     id:               raw.id,
-    name:             raw.name             || raw.id,
+    name:             raw.name || raw.title || raw.id,
     severity:         raw.severity         || 'HIGH',
     category:         raw.category         || 'Uncategorised',
     pattern:          new RegExp(raw.pattern, raw.flags || 'gi'),
@@ -232,12 +232,15 @@ function loadRule(raw, source) {
     lookbehind:       raw.lookbehind       ?? undefined,
     fileTypes:        raw.file_types       ?? undefined,
     excludeFileTypes: raw.exclude_file_types ?? undefined,
+    extensions:       raw.extensions        ?? undefined,
+    skipForFileTypes: raw.skip_for_file_types ?? undefined,
     matchMode:        raw.match_mode       ?? undefined,
     taintAware:       raw.taint_aware      ?? undefined,
     taintExtract:     raw.taint_extract    ?? undefined,
     service:          raw.service          ?? undefined,
     resolve_hint:     raw.resolve_hint     ?? undefined,
     source:           source               || 'builtin',
+    why:              raw.why || raw.description || undefined,
     // scan_comments: true — rule intentionally matches comment line content.
     // Opts out of the global comment-line suppression in scanFileWithRules().
     // Use only for rules whose pattern explicitly targets comment syntax
@@ -252,6 +255,10 @@ function loadRule(raw, source) {
 
   if (raw.antipattern) {
     parts.push(raw.antipattern);
+  }
+
+  if (Array.isArray(raw.antipatterns)) {
+    parts.push(...raw.antipatterns);
   }
 
   if (raw.antipattern_preset) {
@@ -271,13 +278,17 @@ function loadRule(raw, source) {
   delete compiled.flags;
   delete compiled.antipattern_flags;
   delete compiled.antipattern_preset;
+  delete compiled.antipatterns;       // array form — compiled into compiled.antipattern above
   delete compiled.file_types;
   delete compiled.exclude_file_types;
+  delete compiled.skip_for_file_types; // camelCase version kept as skipForFileTypes
   delete compiled.match_mode;
   delete compiled.taint_aware;
   delete compiled.taint_extract;
   delete compiled.schema_version;
   delete compiled.variant;  // variant is internal — scanner sees only id
+  delete compiled.title;       // alias for name — compiled.name is set above
+  delete compiled.description; // alias for why  — compiled.why  is set above
 
   // ── Confidence ──────────────────────────────────────────────────────────
   // confidence_rules array → compiled function
