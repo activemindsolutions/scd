@@ -26,11 +26,11 @@
     {
       "id": "INFRA-001B",
       "name": "Localhost reference in committed config file",
-      "severity": "MEDIUM",
+      "severity": "EXPOSURE",
       "category": "Infrastructure Leakage",
       "pattern": "localhost",
       "flags": "gi",
-      "extensions": ["yaml", "yml", "ini", "conf", "cfg", "env", "properties", "toml"],
+      "extensions": ["ini", "conf", "cfg", "env", "properties", "toml"],
       "antipatterns": [
         "expected.*localhost",
         "#.*localhost",
@@ -90,11 +90,11 @@
     {
       "id": "INFRA-002B",
       "name": "127.0.0.1 reference in committed config file",
-      "severity": "MEDIUM",
+      "severity": "EXPOSURE",
       "category": "Infrastructure Leakage",
       "pattern": "127\\.0\\.0\\.1",
       "flags": "gi",
-      "extensions": ["yaml", "yml", "ini", "conf", "cfg", "env", "properties", "toml", "php"],
+      "extensions": ["ini", "conf", "cfg", "env", "properties", "toml", "php"],
       "antipatterns": [
         "env\\s*\\(",
         "getenv\\s*\\(",
