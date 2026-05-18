@@ -567,21 +567,73 @@
     },
     {
       "id": "JS-ERR-002",
-      "name": "Sensitive request data logged to console",
-      "severity": "MEDIUM",
+      "name": "Request data logged to console",
+      "severity": "HIGH",
+      "confidence": "HIGH",
       "category": "Security Misconfiguration (OWASP A05)",
-      "pattern": "console\\s*\\.\\s*(?:log|error|warn|info|debug)\\s*\\([^)]{0,200}(?:req\\s*\\.\\s*(?:body|headers|cookies)|password|token|secret|authorization|api.?key)",
+      "pattern": "console\\s*\\.\\s*(?:log|error|warn|info|debug)\\s*\\([^)]*\\breq\\s*\\.\\s*(?:body|headers|cookies)\\s*(?![?.]|\\[)",
       "flags": "gi",
-      "file_types": [
-        "js",
-        "mjs",
-        "cjs",
-        "ts",
-        "tsx"
+      "file_types": ["js", "mjs", "cjs", "ts", "tsx"],
+      "antipatterns": [
+        "\\.length\\b",
+        "\\.size\\b",
+        "\\.count\\b"
       ],
-      "why": "Logging request bodies, auth headers, or sensitive fields sends credentials and tokens to stdout/stderr — collected by log aggregation systems and often retained for months.",
-      "scenario": "console.log(\"Login attempt:\", req.body) logs { username: \"admin\", password: \"hunter2\" } to production logs.",
-      "fix": "Log only what you need, and sanitize: const safe = { ...req.body }; delete safe.password; logger.info(\"Login attempt\", safe). Use a structured logger (pino, winston) with log levels."
+      "antipattern_flags": "i",
+      "why": "Logging req.body, req.headers, or req.cookies sends all client-supplied data — including passwords, tokens, and auth headers — to stdout/stderr, where log aggregation systems collect and retain it.",
+      "scenario": "console.log('Login:', req.body) logs { username: 'admin', password: 'hunter2' } to production logs.",
+      "fix": "Log only sanitized fields: const safe = { ...req.body }; delete safe.password; logger.info('Login', safe). Never log the full request object."
+    },
+    {
+      "id": "JS-ERR-002B",
+      "name": "Environment variable logged to console",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "console\\s*\\.\\s*(?:log|error|warn|info|debug)\\s*\\([^)]*process\\s*\\.\\s*env\\s*\\.\\s*[A-Z][A-Z0-9_]{2,}",
+      "flags": "gi",
+      "file_types": ["js", "mjs", "cjs", "ts", "tsx"],
+      "antipatterns": [
+        "\\.length\\b",
+        "\\.size\\b",
+        "\\.count\\b",
+        "\\.toLocaleString\\(",
+        "\\.toFixed\\(",
+        "process\\.env\\.NODE_ENV",
+        "process\\.env\\.PORT",
+        "process\\.env\\.HOST",
+        "process\\.env\\.LOG_LEVEL",
+        "process\\.env\\.APP_ENV",
+        "process\\.env\\.DEBUG",
+        "process\\.env\\.TZ"
+      ],
+      "antipattern_flags": "i",
+      "why": "Environment variables in Node.js are the standard location for secrets (API keys, tokens, passwords). Logging process.env.VARNAME sends the secret value to stdout/stderr.",
+      "scenario": "console.log('Key:', process.env.OPENAI_API_KEY) writes the full API key to the log.",
+      "fix": "Never log environment variables directly. Log presence only: logger.info('API key configured:', !!process.env.OPENAI_API_KEY)."
+    },
+    {
+      "id": "JS-ERR-002C",
+      "name": "Potentially sensitive variable logged to console",
+      "severity": "MEDIUM",
+      "confidence": "MEDIUM",
+      "category": "Security Misconfiguration (OWASP A05)",
+      "pattern": "console\\s*\\.\\s*(?:log|error|warn|info|debug)\\s*\\([^)]*\\b(?:password|passwd|secret|apiKey|api_key|authToken|auth_token|bearerToken|bearer_token|accessToken|access_token|privateKey|private_key|sessionToken|session_token|credential|credentials)\\b",
+      "flags": "gi",
+      "file_types": ["js", "mjs", "cjs", "ts", "tsx"],
+      "antipatterns": [
+        "\\.length\\b",
+        "\\.size\\b",
+        "\\.count\\b",
+        "\\.toLocaleString\\(",
+        "\\.toFixed\\(",
+        "\\?\\s*['\"][^'\"]*['\"]\\s*:\\s*['\"]",
+        "console\\s*\\.\\s*(?:log|error|warn|info|debug)\\s*\\(\\s*['\"][^'\"]*(?:password|passwd|secret|apiKey|api_key|authToken|auth_token|bearerToken|bearer_token|accessToken|access_token|privateKey|private_key|sessionToken|session_token|credential|credentials)[^'\"]*['\"]\\s*[,)]"
+      ],
+      "antipattern_flags": "i",
+      "why": "Logging variables with names suggesting secrets may expose credentials to log aggregation systems. Review whether the actual value — not just the variable name — is being logged.",
+      "scenario": "console.log('Auth failed, token:', authToken) writes the token value to logs.",
+      "fix": "Log only non-sensitive metadata: logger.info('Auth failed', { tokenPresent: !!authToken }). Never log the value of auth credentials."
     },
     {
       "id": "JS-SSRF-001",
