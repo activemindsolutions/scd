@@ -83,7 +83,7 @@
       "category": "Sensitive Data Exposure (OWASP A02)",
       "pattern": "(?:password|passwd|pwd|secret|api_key|api_secret|token|private_key)\\s*:\\s*(?!.*\\$\\{)(?!.*\\$\\{\\{)['\"]?[^\\s'\"#\\n$%{]{6,}['\"]?",
       "flags": "gi",
-      "antipattern": "\\$\\{|\\$\\{\\{|<[A-Z_]+>|YOUR_|CHANGE_ME|PLACEHOLDER|example|test123",
+      "antipattern": "\\$\\{|\\$\\{\\{|<[A-Z_]+>|YOUR_|CHANGE_ME|PLACEHOLDER|example|test123|\\bstring\\b|\\binteger\\b|\\bnumber\\b|\\bboolean\\b|\\bobject\\b|\\barray\\b|\\bnull\\b|\\btrue\\b|\\bfalse\\b|\\btype\\b|\\brequired\\b|\\bvalue\\b",
       "antipattern_flags": "i",
       "lookahead": 5,
       "file_types": [
