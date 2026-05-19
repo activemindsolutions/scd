@@ -590,7 +590,7 @@
       "severity": "HIGH",
       "confidence": "HIGH",
       "category": "Security Misconfiguration (OWASP A05)",
-      "pattern": "console\\s*\\.\\s*(?:log|error|warn|info|debug)\\s*\\([^)]*process\\s*\\.\\s*env\\s*\\.\\s*[A-Z][A-Z0-9_]{2,}",
+      "pattern": "console\\s*\\.\\s*(?:log|error|warn|info|debug)\\s*\\([^)]*process\\s*\\.\\s*env\\s*\\.\\s*(?!NODE_ENV\\b|PORT\\b|HOST\\b|LOG_LEVEL\\b|APP_ENV\\b|DEBUG\\b|TZ\\b)[A-Z][A-Z0-9_]{2,}",
       "flags": "gi",
       "file_types": ["js", "mjs", "cjs", "ts", "tsx"],
       "antipatterns": [
@@ -598,14 +598,7 @@
         "\\.size\\b",
         "\\.count\\b",
         "\\.toLocaleString\\(",
-        "\\.toFixed\\(",
-        "process\\.env\\.NODE_ENV",
-        "process\\.env\\.PORT",
-        "process\\.env\\.HOST",
-        "process\\.env\\.LOG_LEVEL",
-        "process\\.env\\.APP_ENV",
-        "process\\.env\\.DEBUG",
-        "process\\.env\\.TZ"
+        "\\.toFixed\\("
       ],
       "antipattern_flags": "i",
       "why": "Environment variables in Node.js are the standard location for secrets (API keys, tokens, passwords). Logging process.env.VARNAME sends the secret value to stdout/stderr.",
@@ -620,6 +613,7 @@
       "category": "Security Misconfiguration (OWASP A05)",
       "pattern": "console\\s*\\.\\s*(?:log|error|warn|info|debug)\\s*\\([^)]*\\b(?:password|passwd|secret|apiKey|api_key|authToken|auth_token|bearerToken|bearer_token|accessToken|access_token|privateKey|private_key|sessionToken|session_token|credential|credentials)\\b",
       "flags": "gi",
+      "lookahead": 80,
       "file_types": ["js", "mjs", "cjs", "ts", "tsx"],
       "antipatterns": [
         "\\.length\\b",
@@ -628,7 +622,7 @@
         "\\.toLocaleString\\(",
         "\\.toFixed\\(",
         "\\?\\s*['\"][^'\"]*['\"]\\s*:\\s*['\"]",
-        "console\\s*\\.\\s*(?:log|error|warn|info|debug)\\s*\\(\\s*['\"][^'\"]*(?:password|passwd|secret|apiKey|api_key|authToken|auth_token|bearerToken|bearer_token|accessToken|access_token|privateKey|private_key|sessionToken|session_token|credential|credentials)[^'\"]*['\"]\\s*[,)]"
+        "['\"][^'\"]*\\b(?:password|passwd|secret|apiKey|api_key|authToken|auth_token|bearerToken|bearer_token|accessToken|access_token|privateKey|private_key|sessionToken|session_token|credential|credentials)\\b"
       ],
       "antipattern_flags": "i",
       "why": "Logging variables with names suggesting secrets may expose credentials to log aggregation systems. Review whether the actual value — not just the variable name — is being logged.",
