@@ -120,6 +120,11 @@
       "pattern": "\"(?:apiKey|api_key|apiSecret|api_secret|clientSecret|client_secret|accessToken|access_token|secretKey|secret_key|privateKey|private_key|authToken|auth_token)\"\\s*:\\s*\"([^\"]{8,})\"",
       "flags": "gi",
       "antipattern": "YOUR_|CHANGE|EXAMPLE|PLACEHOLDER|<[A-Z]|^:[a-zA-Z]",
+      "antipatterns": [
+        ":\\s*[\"'][^\"']*\\s[^\"']*[\"']",
+        ":\\s*[\"'](?:<[^>]+>|\\{\\{[^}]+\\}\\}|[A-Z][A-Z0-9_]{3,})[\"']",
+        ":\\s*[\"'][a-zA-Z]{1,15}[\"']"
+      ],
       "antipattern_flags": "i",
       "lookahead": 5,
       "file_types": [
@@ -440,10 +445,7 @@
       "category": "Sensitive Data Exposure / GDPR",
       "pattern": "[a-zA-Z0-9._%+\\-]{1,64}@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,10}",
       "flags": "g",
-      "file_types": [
-        "log",
-        "txt"
-      ],
+      "file_types": ["log"],
       "why": "Log files containing many email addresses represent a bulk PII exposure. Email addresses are personal data under GDPR. Log files are often less protected than databases and more likely to be shared or forwarded.",
       "scenario": "Application logs each user's email on login for audit purposes. Log file grows to 200MB with 85,000 unique email addresses. Developer copies the log file to their laptop for troubleshooting. GDPR breach.",
       "fix": "Hash or truncate email addresses in logs: log user_id or a hash(email) instead. Review what constitutes necessary audit logging versus debug logging that should be disabled in production."
