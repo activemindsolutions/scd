@@ -146,16 +146,29 @@
       "category": "Broken Access Control (OWASP A01)",
       "pattern": "(?:app|router)\\.(?:get|post|put|delete|patch)\\s*\\(\\s*['\\\"`][^'\\\"`)]+['\\\"`]\\s*,\\s*async\\s*\\(",
       "flags": "g",
-      "lookahead": 0,
+      "lookahead": 200,
       "file_types": [
         "js",
         "ts",
         "mjs",
         "cjs"
       ],
+      "antipatterns": [
+        "\\.(?:get|post)\\s*\\(\\s*['\"]\\/?(?:health|healthz|ping|status|ready|live|readiness|liveness|metrics)(?:\\/[^'\"]*)?['\"]",
+        "\\.(?:get|post)\\s*\\(\\s*['\"]\\/?api\\/(?:health|healthz|ping|status|ready|live|readiness|liveness|metrics)(?:\\/[^'\"]*)?['\"]",
+        "\\.(?:get|post)\\s*\\(\\s*['\"]\\/?(?:auth|login|logout|signin|signout|signup|register|oauth|sso|saml|openid|connect|authorize|callback|token|refresh-token|forgot-password|reset-password|verify-email|confirm)(?:\\/[^'\"]*)?['\"]",
+        "\\.(?:get|post)\\s*\\(\\s*['\"]\\/?api\\/(?:auth|login|logout|signin|signup|register|oauth|token)(?:\\/[^'\"]*)?['\"]",
+        "\\.get\\s*\\(\\s*['\"]\\/?(?:static|assets|public|favicon\\.ico|robots\\.txt|sitemap\\.xml|manifest\\.json)(?:\\/[^'\"]*)?['\"]",
+        "\\.get\\s*\\(\\s*['\"]\\/?(?:docs|swagger(?:-ui)?|openapi|api-docs|redoc)(?:\\/[^'\"]*)?['\"]",
+        "\\.get\\s*\\(\\s*['\"]\\/?\\.well-known\\/",
+        "\\.get\\s*\\(\\s*['\"]\\/?['\"]",
+        "\\.(?:get|post)\\s*\\(\\s*['\"]\\/?(?:frontend|client|browser)\\/",
+        "\\.get\\s*\\(\\s*['\"][^'\"]*\\.(?:png|jpg|jpeg|gif|ico|svg|webp|css|woff2?|ttf|eot)['\"]"
+      ],
+      "antipattern_flags": "i",
       "why": "Route is missing visible authentication middleware — data may be accessible without logging in.",
       "scenario": "Anyone can call the endpoint directly without being logged in and access data that should be protected.",
-      "fix": "Add auth middleware as the second argument: router.get(\"/data\", requireAuth, async (req, res) => { ... })"
+      "fix": "Add authentication middleware to this route, or verify that auth is applied globally via app.use(requireAuth) or router.use(requireAuth) at the app or router level before route registration. If the route is intentionally public, document this explicitly with a comment. If the handler responds to all HTTP methods (e.g. app.all('/',...)), restrict it to the intended method (e.g. app.get) to avoid exposing POST/PATCH/DELETE operations without authentication. Note: platform-level auth (API Gateway, CloudBase, IAM) does not replace route-level auth checks for sensitive data endpoints."
     },
     {
       "id": "AUTH-002",
