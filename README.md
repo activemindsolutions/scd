@@ -10,15 +10,16 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 
 ## Features
 
-- **182 security rules** across JavaScript, TypeScript, Python, PHP, ASP.NET, and more
+- **189 security rules** across JavaScript, TypeScript, Python, PHP, ASP.NET, and more
 - **Taint analysis** — tracks user-controlled variables from HTTP input to dangerous sinks
+- **Pre-scan file classification** — files are classified into source, test, and excluded contexts before any rule runs; test files and vendor code are routed separately
 - **Git hooks** – secrets scanning on pre-commit, full OWASP scan on pre-push
 - **Zero repo footprint** – no files written or modified to your repository
 - **Compact terminal output** – summary + top issues + most affected files (use `--verbose` for full detail)
 - **HTML, Markdown and JSON reports** with fix guidance for each finding
 - **Deep analysis** – optional AI-powered analysis via scd-server; requires the Deep Analysis Pack (Premium)
 - **Per-scan storage** – every scan saved with a unique random ID (`s-a3f9b2c1`), never overwritten; regenerate reports from any historical scan
-- **Finding IDs** – every finding gets a stable ID (`f-a1b2c3d4e5e5`) shown in scan output, reports and export — use directly with `scd accept` and `scd ignore`
+- **Finding IDs** – every finding gets a stable ID (`f-a1b2c3d4e5`) shown in scan output, reports and export — use directly with `scd accept` and `scd ignore`
 - **Exception management** – reviewed exceptions tracked in config, never as code comments
 - **Exception sync** – pull team-lead approvals from scd-server, sync rejected back with reason
 - **Audit trail** – append-only scan history per repository
@@ -167,188 +168,69 @@ Normal interactive behaviour (with a TTY and no `--log-to`) is completely unchan
 | `scd findings --verbose` | Show all open findings with problem description, scenario, and fix |
 | `scd findings --all` | All findings including excepted and resolved |
 | `scd findings --excepted` | Only excepted findings |
+| `scd findings --show-suppressed` | Show findings suppressed by file context classification |
 | `scd findings --severity critical` | Filter by severity |
 | `scd findings --rule <id>` | Filter by rule ID |
 | `scd findings --scan <id>` | Load a specific historic scan |
 
-### Exception management
+### Exception and scope management
 
 | Command | Description |
 |---|---|
-| `scd accept <finding-id> --reason <text>` | Accept finding as acceptable risk (pending team-lead approval) |
-| `scd accept <finding-id> --tag <text>` | Optional tag, e.g. `false_positive`, `out_of_scope` |
-| `scd ignore <finding-id> --reason <text>` | Ignore a finding (pending team-lead approval) |
-| `scd sync` | Pull approved/rejected exceptions from scd-server *(Premium)* |
-| `scd exceptions` | List all local exceptions with finding IDs |
-| `scd exceptions --list rejected` | List only rejected exceptions |
-| `scd exceptions --list pending\|approved\|all` | Filter by status |
-| `scd resolve --rejected <id>` | Remove a rejected exception and notify server |
-| `scd resolve --rule <id> --file <path> --line <n>` | Mark an EXPOSURE finding as handled |
+| `scd accept <finding-id> --reason "<text>"` | Accept a risk — requires team-lead approval via scd-server |
+| `scd ignore <finding-id> --reason "<text>"` | Ignore a finding (false positive, out of scope) |
+| `scd resolve` | Mark an EXPOSURE finding as handled, or remove a rejected exception |
+| `scd sync` | Pull approvals/rejections from scd-server |
+| `scd exceptions` | List all exceptions and their status |
+| `scd scope --show` | Show current scope exclusions |
+| `scd scope --add-file <pattern>` | Permanently exclude a file or directory |
+| `scd scope --add-rule <id>` | Permanently exclude a rule |
+| `scd scope --remove-file <pattern>` | Remove a file exclusion |
+| `scd scope --remove-rule <id>` | Remove a rule exclusion |
 
-### History & navigation
-
-| Command | Description |
-|---|---|
-| `scd audit` | View scan history and audit trail |
-| `scd insights` | Analyze behavioral patterns from audit log |
-| `scd rules` | List all security rules |
-| `scd rules --lang php` | Filter rules by language |
-| `scd rules --id INFRA-001` | Show full detail for a rule |
-| `scd rules --search "injection"` | Free-text search across rules |
-| `scd rules --stats` | Rule counts by severity and language |
-| `scd list` | List all repos registered in store |
-| `scd repo` | Show store info for current repo |
-| `scd repo show` | Full metadata for current repo |
-| `scd repo scans` | List all saved scans |
-| `scd repo reports` | List saved reports for this repo |
-| `scd repo findings` | List findings for this repo (alias for scd findings) |
-| `scd repo exceptions` | List exceptions for this repo (alias for scd exceptions) |
-| `scd list verify` | Verify all repos exist on disk |
-| `scd list verify --clean` | Interactive cleanup of missing/stale repos |
-| `scd repo configure` | Show per-repo configuration with source (repo/global/default) |
-| `scd repo configure --scan-mode <fast\|full>` | Set scan mode for this repo |
-| `scd repo configure --trust-level <value>` | Set trust level for this repo |
-| `scd repo configure --block-on-high <bool>` | Set blocking behaviour for this repo |
-| `scd remove` | Remove current repo from store (scan history preserved by default) |
-
-### Scope management
+### Repository management
 
 | Command | Description |
 |---|---|
-| `scd scope --show` | Show global scope exclusions (applies to all repos) |
-| `scd scope --add-file <pattern> --reason <text>` | Exclude files/directories globally |
-| `scd scope --add-rule <id> --reason <text>` | Exclude a rule globally |
-| `scd scope --remove-file <pattern> --reason <text>` | Remove a global file exclusion |
-| `scd scope --remove-rule <id> --reason <text>` | Remove a global rule exclusion |
-| `scd repo scope --show` | Show merged scope for current repo (global + repo + server) |
-| `scd repo scope --add-file <pattern> --reason <text>` | Exclude files/directories for this repo |
-| `scd repo scope --add-rule <id> --reason <text>` | Exclude a rule for this repo |
-| `scd repo scope --remove-file <pattern> --reason <text>` | Remove a repo file exclusion |
-| `scd repo scope --remove-rule <id> --reason <text>` | Remove a repo rule exclusion |
+| `scd init` | Register current directory and install git hooks |
+| `scd repo` | Show repo info and scan statistics |
+| `scd repo configure` | Show or update per-repo configuration |
+| `scd repo hooks --disable --reason "<text>"` | Disable git hooks for this repo (reason required) |
+| `scd repo hooks --enable` | Re-enable git hooks |
+| `scd repo scope` | Manage per-repo scope exclusions |
+| `scd list` | List all registered repos |
+| `scd hooks` | Show hook status across all repos |
+| `scd remove` | Remove repo from scd |
 
-All scope exclusions require a `--reason`. Active exclusions are shown prominently in every scan.
-
-For one-off per-scan exclusions without modifying `scope.yml`, use `scd scan --exclude` and `scd scan --exclude-rule`.
-
-### Setup & configuration
+### Rules and insights
 
 | Command | Description |
 |---|---|
-| `scd init` | Register repo and install git hooks |
-| `scd configure --central-url <url>` | Set scd-server URL for team sync *(Premium)* |
-| `scd configure --token <token>` | Set scd-server API token *(Premium)* |
-| `scd configure --server-timeout <value>` | Set timeout for server API calls (e.g. `30s`, `1m`) *(Premium)* |
-| `scd configure --deep-timeout <value>` | Set timeout for deep analysis (e.g. `20m`) *(Premium)* |
-| `scd configure --scan-mode <value>` | Set global default scan mode (overridden by per-repo config) |
-| `scd configure --trust-level <value>` | Set global default trust level |
-| `scd configure --block-on-high <bool>` | Set global default block-on-high |
-| `scd version` | Detailed version info |
-| `scd doctor` | Verify installation and configuration |
+| `scd rules` | List all rules |
+| `scd rules --search <term>` | Search rules by name or ID |
+| `scd rules --stats` | Show rule counts by severity |
+| `scd insights` | Behavioural analysis across scan history |
+| `scd audit` | Show audit log |
+
+### Diagnostics
+
+| Command | Description |
+|---|---|
+| `scd doctor` | Verify installation, hook status, and server connectivity |
+| `scd version` | Show version and rule counts |
+| `scd configure --show` | Show server configuration and global defaults |
 
 ---
 
-## Rule coverage
+## Privacy and data handling
 
-| Severity | Rules |
-|---|---|
-| CRITICAL | 63 |
-| HIGH | 71 |
-| MEDIUM | 10 |
-| EXPOSURE | 30 |
-| **Total** | **182** |
+scd is designed for teams where code privacy is non-negotiable.
 
-Languages covered: JavaScript, TypeScript, Python, PHP, ASP.NET (markup + C#).
-Covers all OWASP Top 10 categories. Run `scd rules --stats` for full breakdown.
+**Local scanning.** Standard `scd scan` runs entirely on your machine. No code, no findings, no metadata leaves your network. Nothing is sent anywhere unless you explicitly connect scd-server.
 
-Covers OWASP Top 10 categories including Injection, Broken Access Control, Cryptographic Failures, Security Misconfiguration, and more.
+**scd-server.** When configured, scd pushes scan metadata and findings to your own scd-server instance — running in your own infrastructure. Findings never reach Activemind's servers.
 
----
-
-## How it works
-
-### Git hooks
-
-`scd init` configures git to use a shared hooks directory (`~/.scd/hooks` on macOS/Linux, `%USERPROFILE%\\.scd\\hooks` on Windows):
-
-```
-pre-commit  → fast secrets scan (blocks CRITICAL findings)
-pre-push    → full OWASP scan  (blocks CRITICAL + HIGH findings)
-```
-
-### Global store
-
-All scan data, configs and reports are stored outside your repository:
-
-```
-~/.scd/                        # macOS / Linux
-%USERPROFILE%\.scd\           # Windows
-├── config                     ← central URL, token, timeouts, global repo defaults
-└── repos/
-    └── {repoId}/
-        ├── meta.json          ← repo identity, last scan, sync timestamps
-        ├── config.yml         ← per-repo settings, exceptions and rule overrides
-        ├── audit.log          ← full scan history (append-only)
-        ├── last-scan.json     ← copy of latest scan
-        ├── scans/             ← one JSON per scan, never overwritten
-        └── reports/           ← generated HTML/MD/JSON reports
-        └── exports/           ← generated JSON-files from scd export-findings command
-```
-
-### Scan storage
-
-Every scan is saved with a unique random ID (`s-a3f9b2c1`). This ID is timezone-neutral and is also used as `session_id` on the server for full traceability.
-
-```bash
-scd repo scans                     # list all saved scans
-scd report --scan s-a3f9b2c1       # regenerate report from a specific scan
-```
-
-
-### Scan output modes
-
-Default (compact) — designed to fit in a terminal without scrolling:
-
-```
-┌─ Summary ──────────────────────────────────────────────────┐
-│  🔴 78 CRITICAL   🟠 126 HIGH   🟡 26 MEDIUM               │
-│  Manual scan  ·  232 findings total  · 141 taint-tracked    │
-└────────────────────────────────────────────────────────────┘
-
-Top issues:
-   🔴  76  PHP-INJ-002    SQL Injection – direct variable interpolation
-   🟠 115  PHP-ERR-001    Information Disclosure – SQL query on error
-   ...
-
-Most affected files:
-   🔴  11  WS_setProjectDetails.php  (Lines: 33, 51, 54, 62, …)
-   ...
-
-  Full details:  scd report open   or   scd report serve
-  All findings:  scd scan --verbose   or   scd export-findings
-```
-
-Use `scd scan --verbose` for full per-file and per-rule detail.
-
-### Taint analysis
-
-The scanner tracks user-controlled variables (HTTP input, CLI args) through your code to identify two-step injection patterns:
-
-```
-↳ $id assigned from $_GET['id'] on line 30
-```
-
-Supports PHP, Python, and JavaScript/TypeScript. Set `scan_mode: fast` with `scd repo configure --scan-mode fast` to skip taint analysis on very large codebases.
-
-### Deep analysis
-
-`scd scan --deep` sends CRITICAL and HIGH findings to scd-server for AI-powered analysis. What is sent per finding:
-
-- The filename
-- Rule ID, name, severity, line number
-- The exact code line that triggered the rule
-- 8 lines of surrounding context
-
-**Whole files are never sent.** Deep analysis requires scd-server with the Deep Analysis Pack. See [securecodebydesign.com](https://securecodebydesign.com) for subscription options.
+**Deep analysis.** `scd scan --deep` sends the triggering code line and 8 lines of surrounding context to your scd-server for AI analysis. The filename, rule ID, and severity are included. Whole files are never sent. Deep analysis requires scd-server with the Deep Analysis Pack. See [securecodebydesign.com](https://securecodebydesign.com) for subscription options.
 
 Set `trust_level: maximum_privacy` with `scd repo configure --trust-level maximum_privacy` to disable all external API calls entirely.
 
@@ -437,22 +319,39 @@ See [INSTALL.md](INSTALL.md) for full platform-specific instructions including N
 bin/
   scd.js                  ← CLI entry point (all scd commands)
 lib/
+  commands/               ← One file per scd command (scan, findings, report, …)
   scanner-full.js         ← OWASP scanner with taint analysis
   scanner-secrets.js      ← Fast secrets scanner (pre-commit)
+  file-manifest.js        ← Pre-scan file classification (source/test/excluded)
+  file-context.js         ← Per-file classification with two-layer detection
+  context-modifiers.js    ← Severity adjustment based on file context + _trace
+  comment-map.js          ← Per-file line classifier (CODE/COMMENT/MIXED)
   taint-register.js       ← Single-file taint tracking engine
   store.js                ← Global store path management
   store-verify.js         ← Store health checks and cleanup
   scan-cache.js           ← Per-scan storage (scans/ directory)
+  scan-context.js         ← Repo-logging context resolution
   rule-registry.js        ← Normalised catalogue of all rules
   config.js               ← Config loading, isExcepted(), getRuleAction()
   exception-manager.js    ← Exception/ignore create, sync, resolve
   deep-analyzer.js        ← Deep analysis via scd-server
+  cli-helpers.js          ← Shared CLI utilities (warnIfOutdated, openInBrowser, tryFlush)
   output-terminal.js      ← Compact + verbose terminal output
   report-html.js          ← HTML report generator
   report-markdown.js      ← Markdown report generator
   report-json.js          ← JSON report generator
   export-findings.js      ← Export findings to JSON
   rules/                  ← Rule definitions per language
+    rule-loader.js        ← JSON→runtime compiler (pattern, antipatterns, extensions)
+    rules-js.json         ← JavaScript/TypeScript rules incl. JS-ERR-002/B/C
+    rules-infra-leakage.json ← Infrastructure rules incl. INFRA-001/B/C, 002/B/C
+    rules-sensitive-files.json ← Sensitive file rules incl. LOG-004, EXPOSURE-001
+    rules-secrets.json    ← Secrets detection
+    rules-python.json     ← Python rules
+    rules-php.json        ← PHP rules
+    rules-aspx.json       ← ASP.NET markup rules
+    rules-aspx-cs.json    ← ASP.NET C# rules
+    rules-ts.json         ← TypeScript-specific rules
 ```
 
 ---
@@ -464,6 +363,7 @@ scd is intentionally lightweight. Keeping the dependency surface small is a deli
 | Package | Version | Purpose |
 |---|---|---|
 | [commander](https://github.com/tj/commander.js) | ^14.0.3 | CLI argument parsing and subcommand structure |
+| [semver](https://github.com/npm/node-semver) | ^7.x | Semantic version comparison for server compatibility checks |
 
 No other runtime dependencies. Node.js built-in modules handle everything else.
 
@@ -479,6 +379,7 @@ npm audit         # check for known vulnerabilities
 ## Roadmap
 
 - `scd deps` – Dependency vulnerability scanning against OSV + CISA KEV feeds (designed, in development)
+- Config-context file classification — distinguishes application config, infrastructure config, and schema/documentation files before rules run; improves precision for YAML and configuration-heavy projects
 - `scd uninstall` – clean removal with store data options
 
 ---
