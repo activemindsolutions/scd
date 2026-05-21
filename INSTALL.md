@@ -61,6 +61,8 @@ npm --version
 
 ## 2. Install scd
 
+The `-g` flag installs scd globally so the `scd` command is available in all your terminals and git repositories. Without it, scd is installed locally in the current directory only and the `scd` command will not be found.
+
 ```bash
 npm install -g @activemind/scd
 scd --version   # verify
@@ -78,7 +80,7 @@ scd --version   # verify
 
 ## 3. Set up git hooks (once per machine)
 
-scd uses git hooks to scan your code automatically — before commits (secrets scan) and before pushes (full OWASP scan). The hooks are installed globally on your machine, so every git repository you work in is protected automatically.
+**This step must be done before `scd init`.** scd uses git hooks to scan your code automatically — before commits (secrets scan) and before pushes (full OWASP scan). The hooks are installed globally on your machine, so every git repository you work in is protected automatically.
 
 ```bash
 scd install
@@ -89,6 +91,8 @@ You only need to run this once per machine. It sets up the hooks in `~/.scd/hook
 ```bash
 scd doctor
 ```
+
+If you skip this step and run `scd init` first, git hooks will not be active. Run `scd install` at any time to add them — no need to re-run `scd init`.
 
 **To remove the hooks** from a machine (for example when switching to a different setup):
 
@@ -244,6 +248,18 @@ On Windows, check your PowerShell profile (`$PROFILE`) for conflicting aliases.
 
 ### Windows
 
+**`scd` installed but not working as expected — missing `-g` flag**
+
+If `scd` behaves unexpectedly or a second terminal cannot find it, you may have installed without the `-g` flag. This installs scd locally in the current directory instead of globally. Fix it:
+
+```powershell
+npm uninstall @activemind/scd          # remove local install
+npm install -g @activemind/scd         # reinstall globally
+scd --version
+```
+
+---
+
 **`scd` not recognized after `npm link` or `npm install -g`**
 
 npm on Windows does not always add its global bin directory to PATH automatically.
@@ -283,6 +299,18 @@ Then open a new PowerShell window and try again.
 ---
 
 ### macOS
+
+**`scd` installed but not working as expected — missing `-g` flag**
+
+If `scd` is not found or behaves unexpectedly, you may have installed without the `-g` flag. Fix it:
+
+```bash
+npm uninstall @activemind/scd          # remove local install
+npm install -g @activemind/scd         # reinstall globally
+scd --version
+```
+
+---
 
 **`scd` not found after `npm install -g`**
 

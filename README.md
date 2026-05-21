@@ -72,7 +72,10 @@ See [INSTALL.md](INSTALL.md) for platform-specific Node.js setup, advanced optio
 ## Quick start
 
 ```bash
-# Register a project and install git hooks
+# 1. Install git hooks globally (once per machine)
+scd install
+
+# 2. Register a project and run your first scan
 cd /path/to/your/project
 scd init
 
@@ -363,7 +366,6 @@ scd is intentionally lightweight. Keeping the dependency surface small is a deli
 | Package | Version | Purpose |
 |---|---|---|
 | [commander](https://github.com/tj/commander.js) | ^14.0.3 | CLI argument parsing and subcommand structure |
-| [semver](https://github.com/npm/node-semver) | ^7.x | Semantic version comparison for server compatibility checks |
 
 No other runtime dependencies. Node.js built-in modules handle everything else.
 
@@ -381,6 +383,44 @@ npm audit         # check for known vulnerabilities
 - `scd deps` – Dependency vulnerability scanning against OSV + CISA KEV feeds (designed, in development)
 - Config-context file classification — distinguishes application config, infrastructure config, and schema/documentation files before rules run; improves precision for YAML and configuration-heavy projects
 - `scd uninstall` – clean removal with store data options
+
+---
+
+## Verifying releases
+
+Every release is signed with [minisign](https://jedisct1.github.io/minisign/) — a simple tool for verifying that a file has not been tampered with. minisign is available for macOS, Linux, and Windows.
+
+To verify a release independently of npm and GitHub, using Activemind's own distribution server as a third source:
+
+```bash
+# Download checksums and signature (replace [version] in the URL with your version, e.g. v1.4.0)
+curl -O https://dist.securecodebydesign.com/scd/[version]/checksums.txt
+curl -O https://dist.securecodebydesign.com/scd/[version]/checksums.txt.minisig
+
+# Download the public key
+curl -O https://dist.securecodebydesign.com/scd/minisign.pub
+
+# Verify
+minisign -Vm checksums.txt -p minisign.pub
+```
+
+Example for v1.4.0:
+```
+https://dist.securecodebydesign.com/scd/v1.4.0/checksums.txt
+https://dist.securecodebydesign.com/scd/v1.4.0/checksums.txt.minisig
+```
+
+The checksums file contains SHA-256 and SHA-512 hashes of the npm package tarball. The public key is also committed to the repository root as `minisign.pub` — cross-reference both sources if you want the strongest guarantee.
+
+---
+
+## License
+
+scd is licensed under the [GNU Affero General Public License v3.0](LICENSE.md) (AGPL-3.0), with a commercial license option for proprietary use.
+
+**Does using scd affect my project's license?** No. Running scd as a development tool — scanning your code with `scd scan`, installing hooks with `scd install`, or using any other scd command — does not impose any license requirements on your code or your product. Your software's license is entirely unaffected.
+
+The AGPL-3.0 applies if you incorporate scd's source code into your own product, distribute scd as part of a commercial offering, or use scd as a component of a network-accessible service provided to third parties. In those cases, a commercial license is available from Activemind Solutions AB — contact [info@activemind.se](mailto:info@activemind.se).
 
 ---
 
@@ -414,4 +454,4 @@ We aim to acknowledge reports within 2 business days and resolve confirmed issue
 
 Built by [Activemind Solutions AB](https://activemind.se) — security consulting and penetration testing.
 
-> Secure Code by Design is a commercial product. See LICENSE for terms.
+> scd CLI is open source under AGPL-3.0. scd-server, which adds team collaboration, dashboards, and compliance reporting, is a commercial product. See [LICENSE](LICENSE.md) for terms.

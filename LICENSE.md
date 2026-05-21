@@ -20,6 +20,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 ---
 
+CLARIFICATION OF USE
+
+Using scd as a development tool — running `scd scan`, `scd install`, or any other scd
+command to analyse your own code — does not constitute incorporation or distribution of
+scd and does not impose any license obligations on your software or its license.
+
+The AGPL-3.0 applies if you incorporate scd's source code into your own product,
+distribute scd as part of a commercial offering, or use scd as a component of a
+network-accessible service provided to third parties.
+
+If you are unsure whether your use case requires a commercial license, contact
+info@activemind.se.
+
+---
+
 COMMERCIAL LICENSE
 
 If you wish to use Secure Code by Design in a proprietary product or
