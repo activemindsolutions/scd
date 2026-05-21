@@ -9,7 +9,7 @@
     "node": ">=22.0.0"
   },
   "bin": {
-    "scd": "./bin/scd.js"
+    "scd": "bin/scd.js"
   },
   "main": "./bin/scd.js",
   "files": [
