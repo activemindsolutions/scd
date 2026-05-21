@@ -2,6 +2,9 @@
 
 > Automated security scanning for development teams using AI coding tools.
 
+[![npm](https://img.shields.io/npm/v/@activemind/scd)](https://www.npmjs.com/package/@activemind/scd)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE.md)
+
 Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilities before they reach production — running quietly in the background via git hooks and on-demand scans. Built for SMB companies using traditional coding and AI coding tools (Claude Code, GitHub Copilot, Cursor) which generates code faster than their security awareness can keep up with.
 
 **Not a replacement for penetration testing.** scd helps you find and fix common vulnerability patterns before they reach production, so that professional security assessments can focus on harder, context-specific problems. It does not replace a penetration test, threat model, or security audit.
