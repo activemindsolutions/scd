@@ -43,6 +43,8 @@ INFRA-021 (non-public TLD) received a regex fix: the TLD terminator is now requi
 
 The false positive reduction is structural — no legitimate CRITICAL or HIGH findings on production source files were suppressed. The rules that remain are either genuine vulnerability patterns or explicitly lower-confidence rules (MEDIUM) where the signal is worth showing but the confidence is limited.
 
+**Snippet redaction removed.** The pre-commit hook scanner (`scanner-secrets.js`) previously replaced the triggering line with `[REDACTED]` before storing the finding. This has been removed. scd CLI and scd-server are designed to run in the customer's own infrastructure — the snippet stays on the same machine as the source file it came from, and treating that machine as untrusted is inconsistent with the product's architecture. More concretely, redaction breaks `--deep` AI analysis: the AI cannot assess whether a finding is a true or false positive when the evidence has been removed. A proper presentation-layer redaction (storing the original, redacting dynamically at render time with configurable levels) is planned as a future feature. Until then, snippets are stored as-is.
+
 **Lookahead window behaviour documented.** Rule antipatterns are tested against a content window (default: 120 characters lookbehind, 300 characters lookahead from the match position). This window can span multiple lines. Rules that use antipatterns sensitive to line boundaries now carry explicit `lookahead` values to prevent cross-line contamination. Rule authors should be aware of this behaviour when designing antipatterns that match structural patterns (quotes, parentheses, colons) rather than keywords.
 
 ---
