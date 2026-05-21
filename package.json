@@ -5,6 +5,10 @@
   "author": "Activemind Solutions AB",
   "license": "SEE LICENSE IN LICENSE.md",
   "homepage": "https://securecodebydesign.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activemindsolutions/scd.git"
+  },
   "engines": {
     "node": ">=22.0.0"
   },
