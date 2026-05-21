@@ -19,6 +19,8 @@ CLAUDE.md
 *.tgz
 *.tar.gz
 
+scripts/
+
 # Editor
 .vscode/
 .idea/

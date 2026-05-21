@@ -1,0 +1,159 @@
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.4.0 — must match package.json)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # upload release assets
+  id-token: write   # SLSA provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      # -------------------------------------------------------------------------
+      # 1. Checkout the tagged commit
+      # -------------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ github.event.inputs.version }}
+
+      # -------------------------------------------------------------------------
+      # 2. Verify package.json version matches input
+      # -------------------------------------------------------------------------
+      - name: Verify version consistency
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+          if [ "$PACKAGE_VERSION" != "$INPUT_VERSION" ]; then
+            echo "ERROR: package.json has '$PACKAGE_VERSION' but input was '$INPUT_VERSION'"
+            exit 1
+          fi
+          echo "Version verified: $PACKAGE_VERSION"
+
+      # -------------------------------------------------------------------------
+      # 3. Set up Node.js with npm registry auth
+      # -------------------------------------------------------------------------
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      # -------------------------------------------------------------------------
+      # 4. Install dependencies (needed for npm pack to work correctly)
+      # -------------------------------------------------------------------------
+      - name: Install dependencies
+        run: npm ci
+
+      # -------------------------------------------------------------------------
+      # 5. Pack — produces scd-<version>.tgz
+      # -------------------------------------------------------------------------
+      - name: Pack
+        run: |
+          npm pack
+          TGZ_FILE=$(ls *.tgz)
+          echo "TGZ_FILE=$TGZ_FILE" >> $GITHUB_ENV
+          echo "Packed: $TGZ_FILE ($(du -sh $TGZ_FILE | cut -f1))"
+
+      # -------------------------------------------------------------------------
+      # 6. Generate checksums.txt (SHA-256 + SHA-512)
+      # -------------------------------------------------------------------------
+      - name: Generate checksums
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          TGZ_FILE="${{ env.TGZ_FILE }}"
+          {
+            echo "# Secure Code by Design — scd v${VERSION}"
+            echo "# Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            echo "# Commit:    $(git rev-parse HEAD)"
+            echo "#"
+            echo "# Algorithms: SHA-256, SHA-512"
+            echo "# MD5 and SHA-1 are not used."
+            echo "# Verify this file with minisign:"
+            echo "#   minisign -Vm checksums.txt -p minisign.pub"
+            echo ""
+          } > checksums.txt
+          echo "sha256  $(sha256sum $TGZ_FILE)" >> checksums.txt
+          echo "" >> checksums.txt
+          echo "sha512  $(sha512sum $TGZ_FILE)" >> checksums.txt
+          echo "checksums.txt written:"
+          cat checksums.txt
+
+      # -------------------------------------------------------------------------
+      # 7. Install minisign and sign checksums.txt
+      # -------------------------------------------------------------------------
+      - name: Install minisign
+        run: |
+          curl -sL https://github.com/jedisct1/minisign/releases/download/0.11/minisign-0.11-linux.tar.gz \
+            | tar -xz --wildcards '*/minisign' --strip-components=2
+          chmod +x minisign
+          sudo mv minisign /usr/local/bin/
+          minisign -v
+
+      - name: Sign checksums.txt
+        env:
+          MINISIGN_PRIVATE_KEY: ${{ secrets.MINISIGN_PRIVATE_KEY }}
+        run: |
+          # Write private key to temp file — minisign requires a file path
+          echo "$MINISIGN_PRIVATE_KEY" > /tmp/minisign.key
+          chmod 600 /tmp/minisign.key
+          # Sign — minisign reads passphrase from stdin when -W (no password) is not set
+          # Our key was generated without a passphrase (-W flag at keygen time)
+          minisign -Sm checksums.txt -s /tmp/minisign.key
+          rm -f /tmp/minisign.key
+          echo "Signature created: checksums.txt.minisig"
+
+      # -------------------------------------------------------------------------
+      # 8. Verify signature against committed public key (sanity check)
+      # -------------------------------------------------------------------------
+      - name: Verify signature
+        run: |
+          minisign -Vm checksums.txt -p minisign.pub
+          echo "Signature verified OK"
+
+      # -------------------------------------------------------------------------
+      # 9. Publish to npm with SLSA provenance
+      # -------------------------------------------------------------------------
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
+
+      # -------------------------------------------------------------------------
+      # 10. Upload checksums.txt + .minisig to GitHub Release
+      # -------------------------------------------------------------------------
+      - name: Upload assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          gh release upload "v${VERSION}" checksums.txt checksums.txt.minisig \
+            --clobber
+          echo "Assets uploaded to GitHub Release v${VERSION}"
+
+      # -------------------------------------------------------------------------
+      # 11. Summary
+      # -------------------------------------------------------------------------
+      - name: Summary
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          TGZ_FILE="${{ env.TGZ_FILE }}"
+          echo ""
+          echo "============================================================"
+          echo "  Published: @activemind/scd v${VERSION}"
+          echo "============================================================"
+          echo ""
+          echo "npm:    https://www.npmjs.com/package/@activemind/scd"
+          echo "Release: https://github.com/${{ github.repository }}/releases/tag/v${VERSION}"
+          echo ""
+          echo "Next step — run locally:"
+          echo "  ./scripts/dist-upload.sh ${VERSION}"
+          echo ""
