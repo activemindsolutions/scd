@@ -1,5 +1,23 @@
 # scd – Release Notes
 
+## v1.4.1 (2026-05-22)
+
+This release improves how `--deep` behaves when scd-server is unavailable or AI is not configured, and adds AI provider visibility to `scd doctor`.
+
+**`--deep` no longer blocks scans when the server is unavailable.** Previously, a connection error during deep analysis would surface a raw error message and leave the output format inconsistent. The behaviour is now well-defined: if scd-server cannot be reached, a warning is shown and the scan continues without deep analysis. Findings are reported normally — the only difference is that the deep analysis section is absent.
+
+**`--deep` handles disabled AI gracefully.** A new installation of scd-server ships with AI analysis disabled by default — an administrator must actively choose and configure a provider. When the CLI encounters this state (HTTP 503 with a specific error body), it shows a targeted warning explaining that AI is disabled and how to enable it, then continues the scan normally. No exit code change; no scan abort.
+
+```
+⚠  Deep analysis skipped — AI is disabled on scd-server.
+   An administrator can enable it in Admin → Operations → AI Settings.
+   Running scan without deep analysis.
+```
+
+**`scd doctor` shows AI provider status.** When scd-server is configured and reachable, `scd doctor` now reports the active AI provider alongside the existing server health information. If AI is disabled, a note is shown directing the administrator to the settings page.
+
+---
+
 ## v1.4.0 (2026-05-20)
 
 This release delivers a major reduction in false positives through targeted rule redesigns, new rules, and structural improvements to how the scanner handles file types. The result is a 78.5% total reduction in findings versus the v1.2.16 baseline across 88 representative repositories — down from 14,801 to 3,181.
