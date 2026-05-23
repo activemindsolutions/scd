@@ -1,6 +1,6 @@
 # Secure Code by Design
 
-> Automated security scanning for development teams using AI coding tools.
+> Automated security scanning for development teams using classic or AI coding tools.
 
 [![npm](https://img.shields.io/npm/v/@activemind/scd)](https://www.npmjs.com/package/@activemind/scd)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE.md)
