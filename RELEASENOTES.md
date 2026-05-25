@@ -1,5 +1,31 @@
 # scd – Release Notes
 
+## v1.4.2 (2026-05-25)
+
+This release fixes several bugs discovered during early usage, improves scan behaviour for non-git directories, and adds visibility into which AI provider is active.
+
+**License clarification added.** The README and LICENSE now explicitly state that using scd as a development tool — running `scd scan`, installing hooks with `scd install`, or using any other scd command to analyse your code — does not trigger AGPL's copyleft requirements. You are not required to publish your source code simply because you use scd to scan it. The AGPL-3.0 applies only if you incorporate scd's source code into your own product, distribute scd as part of a commercial offering, or use scd as a component of a network-accessible service provided to third parties. Your product's license and source code remain entirely your own.
+
+**AI provider and model shown in `scd doctor` and `--deep` output.** `scd doctor` now displays the active AI provider and model name alongside server health information — for example `AI provider: openai · gpt-4o`. When `--deep` analysis completes, the output includes a summary line showing which provider was used and whether code left the environment. Both pieces of information were previously only available in scan files.
+
+**`--max-findings` flag.** A new flag limits how many findings are shown in terminal output and sent to `--deep` analysis. The scan engine always runs fully — all files, all rules. The flag controls output scope only, sorted by severity (CRITICAL first). Audit log and scan cache always receive the complete findings list. Combine with `--severity` for fine-grained control: `scd scan --deep --severity critical --max-findings 20`.
+
+**`--deep` rate limit and token limit handling.** When the AI provider returns a rate limit or token limit error, a clear warning is shown with actionable suggestions rather than a wall of red crosses. A pre-send warning is shown when more than 20 findings are about to be sent, helping users understand that large scopes may hit provider limits.
+
+**`deepAnalysis` merge fix.** `findings[].deepAnalysis` was always `null` in scan files even when deep results existed for those findings. The merge step that links `deepResults` back to the corresponding finding was missing. Fixed: `deepAnalysis` is now correctly populated on findings after `--deep` analysis completes.
+
+**`--log-to none` orphan folder fix.** Running `scd scan <path> --log-to none` was creating an empty folder in `~/.scd/repos/` despite the flag signalling that no store writes should occur. Fixed: the store folder is no longer created when `--log-to none` is set.
+
+**git CWD performance fix.** Running `scd scan /some/path` from a directory that is not a git repo caused the scan to hang for an extended time while git traversed the filesystem looking for a `.git` directory. Fixed: all git commands now use the scan target path as their working directory, and a `.git` existence check prevents git calls against directories that are not git repositories.
+
+**Global config migrated to YAML.** The CLI global configuration file has been renamed from `~/.scd/config` (key=value format) to `~/.scd/config.yml` (YAML format), consistent with all other configuration files in the product. Migration is automatic: on first run after upgrade, the old file is read, a new `config.yml` is written with the same values, and the old file is renamed to `~/.scd/config.old`. No manual action required.
+
+**Stale command references fixed.** Several user-facing strings and generated files referenced commands that had been renamed or restructured in earlier releases. Fixed: `scd report --open` → `scd report open`, `scd report --serve` → `scd report serve`, `scd repo --verify --clean` → `scd list verify --clean`, `scd approve` → `scd accept <findingId> --reason "..."`. The most visible instance was in `scd init`-generated `config.yml` which contained a reference to the old `scd approve` command.
+
+**`--deep` configurable batch size.** A new `ai.max_findings_per_batch` setting (default: 5, configurable via Admin → AI Settings) controls how many findings are sent per AI request. Lower values avoid rate limit errors on providers with low token-per-minute limits; higher values reduce the number of API calls for providers with generous limits. The setting is visible and editable in the admin UI.
+
+---
+
 ## v1.4.1 (2026-05-22)
 
 This release improves how `--deep` behaves when scd-server is unavailable or AI is not configured, and adds AI provider visibility to `scd doctor`.
