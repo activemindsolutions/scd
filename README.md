@@ -26,7 +26,7 @@ Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilitie
 - **Per-scan storage** – every scan saved with a unique random ID (`s-a3f9b2c1`), never overwritten; regenerate reports from any historical scan
 - **Finding IDs** – every finding gets a stable ID (`f-a1b2c3d4e5`) shown in scan output, reports and export — use directly with `scd accept` and `scd ignore`
 - **Exception management** – reviewed exceptions tracked in config, never as code comments
-- **Exception sync** – pull team-lead approvals from scd-server, sync rejected back with reason
+- **Exception sync** – pull team lead approvals from scd-server, sync rejected back with reason
 - **Audit trail** – append-only scan history per repository
 - **`.gitignore` respected** – files git ignores are excluded from scans by default; use `--include-ignored` to override
 - **Scan scope management** – explicitly exclude files, directories, or rules with documented reasons via `scope.yml`; every exclusion is tracked in scan output and audit log
@@ -185,7 +185,7 @@ Normal interactive behaviour (with a TTY and no `--log-to`) is completely unchan
 
 | Command | Description |
 |---|---|
-| `scd accept <finding-id> --reason "<text>"` | Accept a risk — requires team-lead approval via scd-server |
+| `scd accept <finding-id> --reason "<text>"` | Accept a risk — requires team lead approval via scd-server |
 | `scd ignore <finding-id> --reason "<text>"` | Ignore a finding (false positive, out of scope) |
 | `scd resolve` | Mark an EXPOSURE finding as handled, or remove a rejected exception |
 | `scd sync` | Pull approvals/rejections from scd-server |
@@ -250,7 +250,7 @@ Exceptions are managed by finding ID — shown in scan output, reports, and `scd
 # View open findings with their IDs
 scd findings
 
-# Accept a risk (requires team-lead approval via scd-server)
+# Accept a risk (requires team lead approval via scd-server)
 scd accept f-a1b2c3d4e5 --reason "Parameterized internally, validated input only"
 
 # Ignore a finding (false positive, out of scope etc.)

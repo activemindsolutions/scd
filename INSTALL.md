@@ -134,13 +134,25 @@ scd scan     # run your first scan
 scd-server provides team dashboards, exception approval, findings history, deep analysis,
 and CRA compliance reports. It runs in your own infrastructure — no data leaves your network.
 
-Once your organisation's scd-server is running, connect the CLI:
+Once your organisation's scd-server is running, your admin will create a user account for
+you and share a personal CLI token. Each developer has their own token — tokens are shown
+once at creation and cannot be retrieved again. If you lose your token, ask your admin to
+regenerate it via Admin → Users.
 
 ```bash
 scd configure --central-url http://your-server:3000
-scd configure --token <api-token-from-scd-server-admin>
+scd configure --token <your-personal-token>
 scd doctor    # verify connection
 ```
+
+Then run a scan to activate your installation on the server:
+
+```bash
+scd scan
+```
+
+The first scan registers your machine with your user account on the server. Until you run
+a scan, your installation shows as "Pending first scan" in the admin dashboard.
 
 > `localhost` is automatically normalised to `127.0.0.1` to avoid IPv6 resolution issues.
 

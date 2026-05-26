@@ -1,10 +1,6 @@
 # Dependencies
 node_modules/
 
-# Claude related settings and data
-.claude/
-CLAUDE.md
-
 # macOS
 .DS_Store
 .AppleDouble
