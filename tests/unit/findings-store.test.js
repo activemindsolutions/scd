@@ -19,8 +19,8 @@ const path               = require('path');
 const crypto             = require('crypto');
 
 const repoRoot = path.resolve(__dirname, '../..');
-const { loadFindings, updateFindings } = require(path.join(repoRoot, 'lib/findings-store'));
-const { findingsPath, findingsPathReadOnly } = require(path.join(repoRoot, 'lib/store'));
+const { loadFindings, updateFindings, loadFindingsWithBootstrap } = require(path.join(repoRoot, 'lib/findings-store'));
+const { findingsPath, findingsPathReadOnly, scanCachePath, updateMeta } = require(path.join(repoRoot, 'lib/store'));
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -368,6 +368,167 @@ describe('findings-store', () => {
       const after = loadFindings(r)[0];
       assert.equal(after.future_field_x, 'must-survive');
       assert.equal(after.times_seen, 2);
+    } finally { cleanup(r); }
+  });
+
+  test('updateFindings with `at` option uses provided timestamp for first_seen/last_seen', () => {
+    const r = mkTempRepo();
+    try {
+      const f = makeFinding();
+      const historical = '2026-04-01T08:00:00.000Z';
+      updateFindings(r, [f], {
+        scanId: 's-historical',
+        branch: 'main',
+        isDefaultBranch: true,
+        at:     historical,
+      });
+      const rec = loadFindings(r)[0];
+      assert.equal(rec.first_seen, historical);
+      assert.equal(rec.last_seen,  historical);
+    } finally { cleanup(r); }
+  });
+
+  test('updateFindings with `at` option accepts Date object', () => {
+    const r = mkTempRepo();
+    try {
+      const f = makeFinding();
+      const historical = new Date('2026-04-01T08:00:00.000Z');
+      updateFindings(r, [f], {
+        scanId: 's-historical',
+        branch: 'main',
+        isDefaultBranch: true,
+        at:     historical,
+      });
+      const rec = loadFindings(r)[0];
+      assert.equal(rec.first_seen, historical.toISOString());
+    } finally { cleanup(r); }
+  });
+
+});
+
+// ── Bootstrap tests ────────────────────────────────────────────────────────
+
+function writeFakeCache(repoRoot, payload) {
+  const target = scanCachePath(repoRoot);
+  fs.writeFileSync(target, JSON.stringify(payload, null, 2), { encoding: 'utf8', mode: 0o600 });
+}
+
+describe('loadFindingsWithBootstrap', () => {
+
+  test('returns store records directly when findings.jsonl exists', () => {
+    const r = mkTempRepo();
+    try {
+      const f = makeFinding();
+      updateFindings(r, [f], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+      // Touch meta so we can verify lastScanDate is read
+      updateMeta(r, { findingCount: 1, criticalCount: 0 });
+
+      const result = loadFindingsWithBootstrap(r);
+      assert.equal(result.bootstrapped, false);
+      assert.equal(result.records.length, 1);
+      assert.equal(result.records[0].finding_id, f.findingId);
+      assert.ok(result.lastScanDate, 'lastScanDate from meta.json');
+    } finally { cleanup(r); }
+  });
+
+  test('bootstraps from last-scan.json when findings.jsonl missing', () => {
+    const r = mkTempRepo();
+    try {
+      const cacheScanDate = '2026-04-15T10:30:00.000Z';
+      const f = makeFinding({ confidence: 'HIGH' });
+
+      writeFakeCache(r, {
+        scanId:   's-cached',
+        scanDate: cacheScanDate,
+        target:   '.',
+        totalFiles: 1,
+        findings: [{
+          findingId: f.findingId,
+          ruleId:    f.ruleId,
+          filePath:  f.filePath,
+          line:      f.line,
+          codeHash:  f.codeHash,
+          snippet:   f.snippet,
+          severity:  f.severity,
+          confidence: f.confidence,
+        }],
+        suppressed_findings: [],
+      });
+
+      // No findings.jsonl yet — bootstrap path
+      assert.equal(fs.existsSync(findingsPathReadOnly(r)), false);
+
+      const result = loadFindingsWithBootstrap(r);
+      assert.equal(result.bootstrapped, true);
+      assert.equal(result.records.length, 1);
+      assert.equal(result.records[0].finding_id, f.findingId);
+      assert.equal(result.records[0].first_seen, cacheScanDate,
+        'first_seen reflects cache scanDate, not now');
+      assert.equal(result.records[0].last_seen, cacheScanDate);
+      assert.equal(result.records[0].last_scan_id, 's-cached');
+      assert.equal(result.lastScanDate, cacheScanDate);
+      // And the file is now materialized
+      assert.equal(fs.existsSync(findingsPathReadOnly(r)), true);
+    } finally { cleanup(r); }
+  });
+
+  test('bootstrap is one-time — subsequent calls read directly without re-bootstrapping', () => {
+    const r = mkTempRepo();
+    try {
+      const f = makeFinding();
+      writeFakeCache(r, {
+        scanId:   's-cached',
+        scanDate: '2026-04-15T10:30:00.000Z',
+        target:   '.',
+        totalFiles: 1,
+        findings: [{
+          findingId: f.findingId, ruleId: f.ruleId, filePath: f.filePath,
+          line: f.line, codeHash: f.codeHash, snippet: f.snippet,
+          severity: f.severity,
+        }],
+        suppressed_findings: [],
+      });
+
+      const first  = loadFindingsWithBootstrap(r);
+      const second = loadFindingsWithBootstrap(r);
+
+      assert.equal(first.bootstrapped, true);
+      assert.equal(second.bootstrapped, false, 'second call hits direct read path');
+      assert.equal(second.records.length, first.records.length);
+      assert.equal(second.records[0].finding_id, first.records[0].finding_id);
+    } finally { cleanup(r); }
+  });
+
+  test('returns empty result when neither store nor cache exists', () => {
+    const r = mkTempRepo();
+    try {
+      const result = loadFindingsWithBootstrap(r);
+      assert.deepEqual(result.records, []);
+      assert.equal(result.bootstrapped, false);
+      assert.equal(result.lastScanDate, null);
+      // No file materialized
+      assert.equal(fs.existsSync(findingsPathReadOnly(r)), false);
+    } finally { cleanup(r); }
+  });
+
+  test('bootstrap with empty cache.findings still materializes an empty store', () => {
+    const r = mkTempRepo();
+    try {
+      writeFakeCache(r, {
+        scanId:   's-empty',
+        scanDate: '2026-04-15T10:30:00.000Z',
+        target:   '.',
+        totalFiles: 0,
+        findings: [],
+        suppressed_findings: [],
+      });
+      const result = loadFindingsWithBootstrap(r);
+      assert.equal(result.bootstrapped, true);
+      assert.equal(result.records.length, 0);
+      assert.equal(fs.existsSync(findingsPathReadOnly(r)), true);
+      // Second call: store exists → not bootstrap path
+      const second = loadFindingsWithBootstrap(r);
+      assert.equal(second.bootstrapped, false);
     } finally { cleanup(r); }
   });
 
