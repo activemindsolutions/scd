@@ -861,4 +861,89 @@ describe('updateFindings — reconcile (Step 2)', () => {
     } finally { cleanup(r); }
   });
 
+  // ── Tests 13 + 14 — per-identity grouping (duplicate findings in one scan) ─
+  //
+  // Bug fixed 2026-06-05: scd-test step2-verify.js had identical secret lines
+  // at row 20 and 29 → same finding_id but two findings in scanner output. A
+  // scan produced refreshed: 2 and times_seen +2 on the same identity, and
+  // `line` reflected the LAST occurrence. Spec (Step 1a): exactly +1 per
+  // identity per scan, `line` = first occurrence. The grouping was lost when
+  // Step 2 restructured Pass 1 with status-branching.
+  //
+  // Why finding-identity test 3 didn't catch it: that test only asserts what
+  // the SCANNER produces (two findings with same id, distinct line), not what
+  // updateFindings does with them. These two tests close the gap by asserting
+  // both the insert path (test 13) and the refresh path (test 14, the live
+  // scenario from scd-test).
+
+  // ── Test 13 ───────────────────────────────────────────────────────────────
+  test('13. duplicate findings (same finding_id) in one scan into empty store: insert once, line = first', () => {
+    const r = mkTempRepo();
+    try {
+      // Same snippet → same content-based finding_id; distinct line values.
+      const f1 = makeFinding({ ruleId: 'JS-PATH-001', filePath: 'src/app.js', line: 5,  snippet: 'identical line' });
+      const f2 = makeFinding({ ruleId: 'JS-PATH-001', filePath: 'src/app.js', line: 9,  snippet: 'identical line' });
+      assert.equal(f1.findingId, f2.findingId, 'precondition: same identity');
+
+      const result = updateFindings(r, [f1, f2], {
+        scanId: 's-1', branch: 'main', isDefaultBranch: true,
+      });
+
+      assert.equal(result.added, 1,     'exactly one insert per identity per scan');
+      assert.equal(result.refreshed, 0, 'second occurrence MUST NOT trigger refresh-after-insert');
+      assert.equal(result.totalOpen, 1);
+
+      const rec = loadFindings(r)[0];
+      assert.equal(rec.times_seen, 1, '+1 per identity per scan, not +1 per occurrence');
+      assert.equal(rec.line, 5,       'line = first occurrence (lowest line number)');
+    } finally { cleanup(r); }
+  });
+
+  // ── Test 14 — the live scd-test scenario ──────────────────────────────────
+  test('14. duplicate findings in one scan against existing open record: refreshed=1, times_seen+1, line=first', async () => {
+    const r = mkTempRepo();
+    try {
+      // Seed an existing open record (simulates the secret already in the store
+      // from a previous scan).
+      const seed = makeFinding({
+        ruleId: 'SECRET-001', filePath: 'src/config.js', line: 3,
+        snippet: 'const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";',
+      });
+      updateFindings(r, [seed], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+      const seedRec = loadFindings(r)[0];
+
+      // ensure last_seen would differ if it advanced incorrectly
+      await new Promise(res => setTimeout(res, 5));
+
+      // Two duplicate occurrences in next scan — the live scd-test scenario
+      // (rad 20 + rad 29 i step2-verify.js).
+      const f1 = makeFinding({
+        ruleId: 'SECRET-001', filePath: 'src/config.js', line: 20,
+        snippet: 'const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";',
+      });
+      const f2 = makeFinding({
+        ruleId: 'SECRET-001', filePath: 'src/config.js', line: 29,
+        snippet: 'const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";',
+      });
+      assert.equal(f1.findingId, seedRec.finding_id, 'precondition: identity matches seed');
+      assert.equal(f1.findingId, f2.findingId,       'precondition: duplicates share identity');
+
+      const result = updateFindings(r, [f1, f2], {
+        scanId: 's-2', branch: 'main', isDefaultBranch: true,
+      });
+
+      assert.equal(result.refreshed, 1,
+        'spec: exactly +1 per identity per scan — was 2 before fix (one per occurrence)');
+      assert.equal(result.added, 0);
+
+      const rec = loadFindings(r)[0];
+      assert.equal(rec.times_seen, (seedRec.times_seen || 0) + 1,
+        'times_seen advances by 1 per scan, not by occurrence count');
+      assert.equal(rec.line, 20,
+        'line = first occurrence (lowest line number) — was 29 (last) before fix');
+      assert.equal(rec.last_scan_id, 's-2');
+      assert.notEqual(rec.last_seen, seedRec.last_seen, 'last_seen advances on refresh');
+    } finally { cleanup(r); }
+  });
+
 });
