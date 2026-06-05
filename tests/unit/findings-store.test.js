@@ -21,6 +21,7 @@ const crypto             = require('crypto');
 const repoRoot = path.resolve(__dirname, '../..');
 const { loadFindings, updateFindings, loadFindingsWithBootstrap } = require(path.join(repoRoot, 'lib/findings-store'));
 const { findingsPath, findingsPathReadOnly, scanCachePath, updateMeta } = require(path.join(repoRoot, 'lib/store'));
+const { makeFindingId, makeCodeHash } = require(path.join(repoRoot, 'lib/finding-identity'));
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -51,12 +52,8 @@ function makeFinding(overrides = {}) {
   const snippet  = overrides.snippet  || 'const x = req.body.input;';
   const codeHash = overrides.codeHash !== undefined
     ? overrides.codeHash
-    : crypto.createHash('sha256').update(snippet).digest('hex').slice(0, 32);
-  const findingId = overrides.findingId || (
-    'f-' + crypto.createHash('sha256')
-      .update(ruleId + '|' + filePath + '|' + snippet)
-      .digest('hex').slice(0, 10)
-  );
+    : makeCodeHash(snippet);
+  const findingId = overrides.findingId || makeFindingId(ruleId, filePath, snippet);
   return {
     ruleId,
     filePath,
