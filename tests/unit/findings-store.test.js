@@ -533,3 +533,335 @@ describe('loadFindingsWithBootstrap', () => {
   });
 
 });
+
+// ── Step 2 — reconcile (resolve + reopen) ──────────────────────────────────
+//
+// Rule-id choices used below are intentional:
+//   - 'JS-PATH-001'  is in getRegistry() but NOT in scanner-secrets.RULES
+//     (full-domain eligible, secrets-domain ineligible).
+//   - 'SECRET-001'   is in both (covers full + secrets domains).
+//   - 'NONEXISTENT-999' is in neither (unknown to registry).
+
+describe('updateFindings — reconcile (Step 2)', () => {
+
+  // ── Test 1 ────────────────────────────────────────────────────────────────
+  test('1. open + not reported + file covered + rule eligible → resolved (last_seen unchanged)', async () => {
+    const r = mkTempRepo();
+    try {
+      // Seed an open finding via a normal scan-like insert
+      const f = makeFinding({ ruleId: 'JS-PATH-001', filePath: 'src/app.js' });
+      updateFindings(r, [f], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+      const seeded = loadFindings(r)[0];
+
+      // ensure timestamps would differ if last_seen DID update
+      await new Promise(res => setTimeout(res, 5));
+
+      // Next scan: empty findings, file covered, full domain. Finding should resolve.
+      const result = updateFindings(r, [], {
+        scanId:   's-2',
+        coverage: { files: ['src/app.js'], ruleDomain: 'all' },
+        branch:   'main',
+        isDefaultBranch: true,
+      });
+
+      assert.equal(result.resolved, 1);
+      assert.equal(result.reopened, 0);
+      assert.equal(result.totalOpen, 0);
+      assert.equal(result.resolvedRecords.length, 1);
+
+      const rec = loadFindings(r)[0];
+      assert.equal(rec.status, 'resolved');
+      assert.ok(rec.resolved_at, 'resolved_at is set');
+      assert.equal(rec.last_seen, seeded.last_seen,
+        'last_seen MUST NOT advance on resolve (it means last confirmed present)');
+      assert.equal(rec.last_scan_id, seeded.last_scan_id,
+        'last_scan_id MUST NOT advance on resolve');
+      assert.equal(rec.times_seen, seeded.times_seen,
+        'times_seen MUST NOT advance on resolve');
+    } finally { cleanup(r); }
+  });
+
+  // ── Test 2 ────────────────────────────────────────────────────────────────
+  test('2. open + not reported + file NOT in coverage → untouched', () => {
+    const r = mkTempRepo();
+    try {
+      const f = makeFinding({ ruleId: 'JS-PATH-001', filePath: 'src/app.js' });
+      updateFindings(r, [f], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+
+      const result = updateFindings(r, [], {
+        scanId:   's-2',
+        coverage: { files: ['src/other.js'], ruleDomain: 'all' },  // app.js not covered
+        branch:   'main', isDefaultBranch: true,
+      });
+
+      assert.equal(result.resolved, 0);
+      assert.equal(loadFindings(r)[0].status, 'open');
+    } finally { cleanup(r); }
+  });
+
+  // ── Test 3 ────────────────────────────────────────────────────────────────
+  test('3. open non-secrets rule + ruleDomain=secrets + file covered → untouched (OWASP guard)', () => {
+    const r = mkTempRepo();
+    try {
+      const f = makeFinding({ ruleId: 'JS-PATH-001', filePath: 'src/app.js' });
+      updateFindings(r, [f], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+
+      // Pre-commit-style secrets-only scan, file is covered, but rule is NOT secrets.
+      // Must NOT resolve — the secrets scan never ran path-traversal rules.
+      const result = updateFindings(r, [], {
+        scanId:   's-secrets',
+        coverage: { files: ['src/app.js'], ruleDomain: 'secrets' },
+        branch:   'main', isDefaultBranch: true,
+      });
+
+      assert.equal(result.resolved, 0);
+      assert.equal(loadFindings(r)[0].status, 'open');
+    } finally { cleanup(r); }
+  });
+
+  // ── Test 4 ────────────────────────────────────────────────────────────────
+  test('4. secrets rule + ruleDomain=secrets + file covered + not reported → resolved', () => {
+    const r = mkTempRepo();
+    try {
+      const f = makeFinding({ ruleId: 'SECRET-001', filePath: 'config.js' });
+      updateFindings(r, [f], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+
+      // Clean pre-commit: file covered for secrets, finding gone → resolved.
+      // This is the §3 hook-mode example.
+      const result = updateFindings(r, [], {
+        scanId:   's-secrets',
+        coverage: { files: ['config.js'], ruleDomain: 'secrets' },
+        branch:   'main', isDefaultBranch: true,
+      });
+
+      assert.equal(result.resolved, 1);
+      assert.equal(loadFindings(r)[0].status, 'resolved');
+    } finally { cleanup(r); }
+  });
+
+  // ── Test 5 ────────────────────────────────────────────────────────────────
+  test('5. resolved + reported again → reopened (status=open, reopen_count++, resolved_at gone)', () => {
+    const r = mkTempRepo();
+    try {
+      const f = makeFinding({ ruleId: 'JS-PATH-001', filePath: 'src/app.js' });
+      updateFindings(r, [f], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+      // Resolve it
+      updateFindings(r, [], {
+        scanId:   's-2',
+        coverage: { files: ['src/app.js'], ruleDomain: 'all' },
+        branch:   'main', isDefaultBranch: true,
+      });
+      assert.equal(loadFindings(r)[0].status, 'resolved');
+      const timesBefore = loadFindings(r)[0].times_seen;
+
+      // Reopen by reporting again
+      const result = updateFindings(r, [f], {
+        scanId:   's-3',
+        coverage: { files: ['src/app.js'], ruleDomain: 'all' },
+        branch:   'main', isDefaultBranch: true,
+      });
+
+      assert.equal(result.reopened, 1);
+      assert.equal(result.added, 0);
+      assert.equal(result.refreshed, 0);
+      const rec = loadFindings(r)[0];
+      assert.equal(rec.status, 'open');
+      assert.equal(rec.reopen_count, 1);
+      assert.equal(rec.resolved_at, undefined, 'resolved_at is removed on reopen');
+      assert.equal(rec.times_seen, timesBefore + 1, 'times_seen advances on reopen');
+      assert.equal(rec.last_scan_id, 's-3');
+    } finally { cleanup(r); }
+  });
+
+  // ── Test 6 ────────────────────────────────────────────────────────────────
+  test('6. open + id present ONLY in suppressed → untouched (no refresh, no resolve)', () => {
+    const r = mkTempRepo();
+    try {
+      const f = makeFinding({ ruleId: 'JS-PATH-001', filePath: 'src/app.js' });
+      updateFindings(r, [f], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+      const seeded = loadFindings(r)[0];
+
+      // The finding shows up only in the suppressed bucket this scan.
+      // Must NOT be refreshed (no active sighting) AND must NOT be resolved
+      // (suppression is not absence — its rule ran and matched).
+      const result = updateFindings(r, [], {
+        scanId:     's-2',
+        coverage:   { files: ['src/app.js'], ruleDomain: 'all' },
+        suppressed: [f],
+        branch:     'main', isDefaultBranch: true,
+      });
+
+      assert.equal(result.refreshed, 0);
+      assert.equal(result.resolved, 0);
+      const rec = loadFindings(r)[0];
+      assert.equal(rec.status, 'open');
+      assert.equal(rec.last_seen, seeded.last_seen, 'last_seen unchanged (no refresh)');
+      assert.equal(rec.times_seen, seeded.times_seen, 'times_seen unchanged');
+    } finally { cleanup(r); }
+  });
+
+  // ── Test 7 ────────────────────────────────────────────────────────────────
+  test('7. open + (rule, file) matches scope rule-exclusion → untouched despite coverage', () => {
+    const r = mkTempRepo();
+    try {
+      const f = makeFinding({ ruleId: 'JS-PATH-001', filePath: 'src/app.js' });
+      updateFindings(r, [f], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+
+      const scope = {
+        file_excludes: [],
+        rule_excludes: [{ rule: 'JS-PATH-001', files: ['src/app.js'], reason: 'test' }],
+      };
+
+      const result = updateFindings(r, [], {
+        scanId:   's-2',
+        coverage: { files: ['src/app.js'], ruleDomain: 'all' },
+        scope,
+        branch:   'main', isDefaultBranch: true,
+      });
+
+      assert.equal(result.resolved, 0);
+      assert.equal(loadFindings(r)[0].status, 'open');
+    } finally { cleanup(r); }
+  });
+
+  // ── Test 8 ────────────────────────────────────────────────────────────────
+  test('8. stored rule_id unknown to registry + ruleDomain=all + covered → untouched', () => {
+    const r = mkTempRepo();
+    try {
+      const f = makeFinding({ ruleId: 'NONEXISTENT-999', filePath: 'src/app.js' });
+      updateFindings(r, [f], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+
+      // The rule has been removed/renamed; its absence in scan output is not
+      // evidence of fix — its rule no longer runs.
+      const result = updateFindings(r, [], {
+        scanId:   's-2',
+        coverage: { files: ['src/app.js'], ruleDomain: 'all' },
+        branch:   'main', isDefaultBranch: true,
+      });
+
+      assert.equal(result.resolved, 0);
+      assert.equal(loadFindings(r)[0].status, 'open');
+    } finally { cleanup(r); }
+  });
+
+  // ── Test 9 ────────────────────────────────────────────────────────────────
+  test('9. no `coverage` argument → zero resolves (bootstrap invariant)', () => {
+    const r = mkTempRepo();
+    try {
+      // Seed a few open findings that would resolve if coverage were provided
+      const f1 = makeFinding({ ruleId: 'JS-PATH-001', filePath: 'src/a.js', snippet: 'a()' });
+      const f2 = makeFinding({ ruleId: 'JS-PATH-001', filePath: 'src/b.js', snippet: 'b()' });
+      updateFindings(r, [f1, f2], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+
+      // No coverage option → bootstrap-style invocation.
+      // Pass empty scanFindings to "prove" they'd all be eligible if coverage WERE there.
+      const result = updateFindings(r, [], {
+        scanId: 's-2',
+        branch: 'main', isDefaultBranch: true,
+        // coverage intentionally omitted
+      });
+
+      assert.equal(result.resolved, 0,
+        'BOOTSTRAP INVARIANT: no coverage ⇒ zero resolves, regardless of store contents');
+      const records = loadFindings(r);
+      assert.equal(records.length, 2);
+      assert.ok(records.every(rec => rec.status === 'open'),
+        'all records remain open without coverage');
+    } finally { cleanup(r); }
+  });
+
+  // ── Test 10 ───────────────────────────────────────────────────────────────
+  test('10. zero scan findings + coverage present → all covered+eligible records resolved', () => {
+    const r = mkTempRepo();
+    try {
+      const f1 = makeFinding({ ruleId: 'JS-PATH-001', filePath: 'src/a.js', snippet: 'a()' });
+      const f2 = makeFinding({ ruleId: 'SECRET-001',  filePath: 'src/b.js', snippet: 'b()' });
+      updateFindings(r, [f1, f2], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+
+      const result = updateFindings(r, [], {
+        scanId:   's-2',
+        coverage: { files: ['src/a.js', 'src/b.js'], ruleDomain: 'all' },
+        branch:   'main', isDefaultBranch: true,
+      });
+
+      assert.equal(result.resolved, 2);
+      assert.equal(result.totalOpen, 0);
+    } finally { cleanup(r); }
+  });
+
+  // ── Test 11 ───────────────────────────────────────────────────────────────
+  test('11. unknown extra field on record survives resolve transition verbatim', () => {
+    const r = mkTempRepo();
+    try {
+      const f = makeFinding({ ruleId: 'JS-PATH-001', filePath: 'src/app.js' });
+      updateFindings(r, [f], { scanId: 's-1', branch: 'main', isDefaultBranch: true });
+
+      // Post-hoc add a future-field, simulating a newer CLI version
+      const target = findingsPathReadOnly(r);
+      const rec = JSON.parse(fs.readFileSync(target, 'utf8').split('\n').filter(Boolean)[0]);
+      rec.future_field_x = 'must-survive-resolve';
+      fs.writeFileSync(target, JSON.stringify(rec) + '\n', { mode: 0o600 });
+
+      updateFindings(r, [], {
+        scanId:   's-2',
+        coverage: { files: ['src/app.js'], ruleDomain: 'all' },
+        branch:   'main', isDefaultBranch: true,
+      });
+
+      const after = loadFindings(r)[0];
+      assert.equal(after.status, 'resolved');
+      assert.equal(after.future_field_x, 'must-survive-resolve',
+        'unknown field preserved through resolve transition');
+    } finally { cleanup(r); }
+  });
+
+  // ── Test 12 ───────────────────────────────────────────────────────────────
+  test('12. logReconcile writes finding_resolved + finding_reopened events with correct shape', () => {
+    const r = mkTempRepo();
+    try {
+      const { logReconcile, EVENTS } = require(path.join(repoRoot, 'lib/audit'));
+      const { auditPath } = require(path.join(repoRoot, 'lib/store'));
+
+      const resolvedRec = {
+        finding_id: 'f-abc1234567', rule_id: 'JS-PATH-001',
+        file: 'src/app.js', line: 12,
+        code_hash: '3fa65931a045957aea27065b1233e608',
+        resolved_at: '2026-06-04T16:00:00.000Z',
+      };
+      const reopenedRec = {
+        finding_id: 'f-def0987654', rule_id: 'SECRET-001',
+        file: 'config.js', line: 5,
+        code_hash: 'aabbccddeeff00112233445566778899',
+        reopen_count: 1,
+      };
+
+      logReconcile(r, {
+        scanId:   's-test',
+        resolved: [resolvedRec],
+        reopened: [reopenedRec],
+        hookType: 'manual',
+        noSync:   true,  // skip push
+      });
+
+      const log = fs.readFileSync(auditPath(r), 'utf8')
+        .split('\n').filter(Boolean).map(l => JSON.parse(l));
+
+      const resolvedEvt = log.find(e => e.event === EVENTS.FINDING_RESOLVED);
+      const reopenedEvt = log.find(e => e.event === EVENTS.FINDING_REOPENED);
+
+      assert.ok(resolvedEvt, 'finding_resolved event written');
+      assert.equal(resolvedEvt.session_id, 's-test');
+      assert.equal(resolvedEvt.finding_id, 'f-abc1234567');
+      assert.equal(resolvedEvt.rule_id, 'JS-PATH-001');
+      assert.equal(resolvedEvt.code_hash, '3fa65931a045957aea27065b1233e608');
+      assert.equal(resolvedEvt.resolved_at, '2026-06-04T16:00:00.000Z');
+      assert.equal(resolvedEvt.hook, 'manual');
+
+      assert.ok(reopenedEvt, 'finding_reopened event written');
+      assert.equal(reopenedEvt.finding_id, 'f-def0987654');
+      assert.equal(reopenedEvt.reopen_count, 1);
+      assert.equal(reopenedEvt.code_hash, 'aabbccddeeff00112233445566778899');
+    } finally { cleanup(r); }
+  });
+
+});
