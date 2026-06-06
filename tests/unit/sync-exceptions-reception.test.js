@@ -716,3 +716,126 @@ describe('sync notice reflects post-flush state', () => {
   });
 
 });
+
+// ── scd queue list / reset (push-queue recovery tooling) ─────────────────────
+// These tests write the single global queue at pushQueue.QUEUE_PATH, which the
+// file-level before/after snapshot+restore protects. They live HERE (not in a
+// new file) on purpose: that snapshot makes THIS file the queue's sole writer in
+// the suite — a second writer file would race two parallel processes on that one
+// global path (see the header note). None of these drive a flush across files.
+
+describe('scd queue list/reset', () => {
+  const queueCmd  = require(path.join(root, 'lib/commands/queue'));
+  const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
+  // Write a controlled multi-entry queue. Each spec: { type, attempts, ageDays }.
+  function writeQueue(specs) {
+    const lines = specs.map((s, i) => JSON.stringify({
+      id:          `q-${process.pid}-${counter++}-${i}`,
+      ts:          new Date(Date.now() - (s.ageDays || 0) * 86400000).toISOString(),
+      attempts:    s.attempts || 0,
+      lastAttempt: s.attempts ? new Date().toISOString() : null,
+      event:       { type: s.type || 'scan_completed', ts: new Date().toISOString() },
+    }));
+    fs.mkdirSync(path.dirname(pushQueue.QUEUE_PATH), { recursive: true });
+    fs.writeFileSync(pushQueue.QUEUE_PATH, lines.length ? lines.join('\n') + '\n' : '', 'utf8');
+  }
+
+  test('1. list shows fresh + stale events with correct counts and the exception line', async () => {
+    const r  = mkTempRepo();
+    const un = [
+      patch(gconfig, 'getCentralUrl', () => 'https://central.example:3000'),
+      patch(config,  'getRepoRoot',   () => r),
+    ];
+    try {
+      seedStaleMeta(r);                  // writes meta.json → repo is "known"
+      tracker.markPending(r, 'exc-q1');  // one exception awaiting delivery
+      writeQueue([
+        { type: 'scan_completed', attempts: 0 },    // fresh
+        { type: 'findings_batch', attempts: 10 },   // stale by attempts
+      ]);
+      const out = stripAnsi(await recordConsole(() => queueCmd.renderList({})));
+      assert.match(out, /Events: 2 total/);
+      assert.match(out, /1 deliverable/);
+      assert.match(out, /1 stale/);
+      assert.match(out, /findings_batch.*stale: attempts/);
+      assert.match(out, /Exceptions awaiting delivery: 1/);
+    } finally { un.forEach(f => f()); cleanup(r); }
+  });
+
+  test('2. list --stale shows only stale entries; a healthy queue prints the OK message', async () => {
+    const un = [ patch(gconfig, 'getCentralUrl', () => 'https://central.example:3000') ];
+    try {
+      writeQueue([
+        { type: 'scan_completed',    attempts: 0 },
+        { type: 'findings_resolved', ageDays: 40 },   // stale by age
+      ]);
+      let out = stripAnsi(await recordConsole(() => queueCmd.renderList({ stale: true })));
+      assert.match(out, /findings_resolved.*stale: age/);
+      assert.doesNotMatch(out, /scan_completed/, 'fresh entry omitted in --stale view');
+
+      writeQueue([{ type: 'scan_completed', attempts: 0 }]);   // all healthy
+      out = stripAnsi(await recordConsole(() => queueCmd.renderList({ stale: true })));
+      assert.match(out, /No stale entries — queue is healthy/);
+    } finally { un.forEach(f => f()); }
+  });
+
+  test('3. reset zeroes attempts on all entries and a subsequent flush POSTs them', async () => {
+    let received = null;
+    const mock = await startMockServer((req, res, json) => {
+      received = json;
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = 200;
+      res.end(JSON.stringify({ sync_exceptions: [] }));
+    });
+    const r  = mkTempRepo();   // unknown repo → reset's flush runs with repoRoot=null
+    const un = [
+      patch(gconfig, 'getCentralUrl',   () => mock.url),
+      patch(gconfig, 'getCentralToken', () => 'test-token'),
+      patch(config,  'getRepoRoot',     () => r),
+    ];
+    try {
+      writeQueue([
+        { type: 'scan_completed', attempts: 10 },   // stale
+        { type: 'findings_batch', attempts: 10 },   // stale
+      ]);
+      const out = stripAnsi(await recordConsole(() => queueCmd.runReset()));
+      assert.match(out, /Reset 2 events \(2 were stale\)/);
+      assert.equal(pushQueue.listEntries().length, 0, 'queue drained after successful delivery');
+      assert.ok(received && Array.isArray(received.events), 'server received an events batch');
+      const types = received.events.map(e => e.type).sort();
+      assert.deepEqual(types, ['findings_batch', 'scan_completed'], 'previously-stale events delivered');
+    } finally { un.forEach(f => f()); await mock.close(); cleanup(r); }
+  });
+
+  test('4. reset with an unreachable server keeps entries with attempts reset (no re-stale)', async () => {
+    const r  = mkTempRepo();
+    const un = [
+      // Closed port → connection refused → transient failure, never bumps attempts.
+      patch(gconfig, 'getCentralUrl',   () => 'http://127.0.0.1:1'),
+      patch(gconfig, 'getCentralToken', () => 'test-token'),
+      patch(config,  'getRepoRoot',     () => r),
+    ];
+    try {
+      writeQueue([{ type: 'scan_completed', attempts: 10 }]);   // stale
+      const out = stripAnsi(await recordConsole(() => queueCmd.runReset()));
+      assert.match(out, /Reset 1 event \(1 was stale\)/);
+      assert.match(out, /Server unreachable/);
+      const entries = pushQueue.listEntries();
+      assert.equal(entries.length, 1, 'entry kept (not delivered)');
+      assert.equal(entries[0].attempts, 0, 'attempts stayed reset — unreachable does not bump');
+      assert.equal(entries[0].stale, false, 'no longer stale after reset');
+    } finally { un.forEach(f => f()); cleanup(r); }
+  });
+
+  test('5. no central URL → list and reset print the not-configured message and exit 0', async () => {
+    const un = [ patch(gconfig, 'getCentralUrl', () => null) ];
+    try {
+      const l = stripAnsi(await recordConsole(() => queueCmd.renderList({})));
+      assert.match(l, /No central server configured/);
+      const rOut = stripAnsi(await recordConsole(() => queueCmd.runReset()));
+      assert.match(rOut, /No central server configured/);
+    } finally { un.forEach(f => f()); }
+  });
+
+});

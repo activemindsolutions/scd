@@ -42,6 +42,8 @@ require('../lib/commands/findings').register(program);
 
 require('../lib/commands/sync').register(program);
 
+require('../lib/commands/queue').register(program);
+
 require('../lib/commands/exceptions').register(program);
 
 require('../lib/commands/resolve').register(program);
