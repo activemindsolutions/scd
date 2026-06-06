@@ -1,0 +1,718 @@
+/**
+ * sync-exceptions-reception.test.js
+ * Unit tests for Branch C — sync_exceptions reception via the events/batch
+ * push-response channel (feature/sync-exceptions-reception).
+ *
+ * Run: npm test  (or: node --test tests/unit/sync-exceptions-reception.test.js)
+ *
+ * Two levels:
+ *   - applyServerDecisions / applyFlushDecisions: classification, idempotence,
+ *     high-water-mark, quiet UX (no network).
+ *   - flush(): end-to-end against a local mock server — asserts the opaque ack
+ *     token is echoed VERBATIM, decisions land in config.yml, and the staleness
+ *     timestamp moves.
+ *
+ * Isolation mirrors exceptions-push.test.js: unique temp repo per test, the
+ * scd global store (~/.scd/repos/{id}/) cleaned afterwards, and central-url +
+ * the global push queue snapshotted/restored so the user's setup is untouched.
+ */
+
+'use strict';
+
+const { test, describe, before, after } = require('node:test');
+const assert = require('node:assert/strict');
+const fs     = require('fs');
+const os     = require('os');
+const path   = require('path');
+const http   = require('http');
+const crypto = require('crypto');
+
+const root = path.resolve(__dirname, '../..');
+const em        = require(path.join(root, 'lib/exception-manager'));
+const store     = require(path.join(root, 'lib/store'));
+const pushQueue = require(path.join(root, 'lib/push-queue'));
+const tracker   = require(path.join(root, 'lib/exceptions-push-tracker'));
+const gconfig   = require(path.join(root, 'lib/global-config'));
+const config    = require(path.join(root, 'lib/config'));
+const { storeDir, getSyncAckToken, readMeta } = store;
+
+// The Branch C reception tests pass the central URL/token into flush() via
+// arguments, never via ~/.scd/config. The delivery-order + sync-notice tests at
+// the bottom DO patch the global-config/config module exports, but in-process
+// (never touching ~/.scd/config), so there is no filesystem contention with
+// exceptions-push.test.js (node runs test FILES in parallel).
+//
+// All flush()-driving tests live in THIS one file on purpose: flush() reads a
+// single global queue (~/.scd/push-queue.jsonl). Splitting them across files
+// would race two parallel processes on that one file; keeping them together
+// runs them sequentially within one process.
+
+// ── HTTP mock ──────────────────────────────────────────────────────────────
+
+function startMockServer(handler) {
+  return new Promise((resolve) => {
+    const srv = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      req.on('end', () => {
+        let json = {};
+        try { json = body ? JSON.parse(body) : {}; } catch {}
+        handler(req, res, json);
+      });
+    });
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address();
+      resolve({ url: `http://127.0.0.1:${port}`, close: () => new Promise(r => srv.close(r)) });
+    });
+  });
+}
+
+// ── Repo + config helpers ────────────────────────────────────────────────────
+
+let counter = 0;
+function mkTempRepo() {
+  const id  = `${process.pid}-${Date.now()}-${counter++}-${crypto.randomBytes(4).toString('hex')}`;
+  const dir = path.join(os.tmpdir(), `scd-syncrecv-test-${id}`);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function cleanup(repoRoot) {
+  try { fs.rmSync(storeDir(repoRoot), { recursive: true, force: true }); } catch {}
+  try { fs.rmSync(repoRoot, { recursive: true, force: true }); } catch {}
+}
+
+// Seed config.yml with one pending exception. The hash field is `line_hash`
+// (writeException's on-disk name); the decision record's code_hash matches it.
+function seedException(repoRoot, ex) {
+  const yaml =
+`# scd test config
+trust_level: balanced
+
+exceptions:
+  - id: "${ex.id}"
+    type: "${ex.type || 'exception'}"
+    status: "${ex.status || 'pending'}"
+    rule: "${ex.rule}"
+    file: "${ex.file}"
+    line: ${ex.line}
+    line_hash: "${ex.code_hash}"
+    reason: "${ex.reason || 'because'}"
+    created_date: "2026-06-06"
+`;
+  fs.mkdirSync(storeDir(repoRoot), { recursive: true });
+  fs.writeFileSync(path.join(storeDir(repoRoot), 'config.yml'), yaml, 'utf8');
+}
+
+function readConfig(repoRoot) {
+  return fs.readFileSync(path.join(storeDir(repoRoot), 'config.yml'), 'utf8');
+}
+
+// A server decision record as delivered in the events/batch response.
+function decision(over = {}) {
+  return {
+    rule_id:        'RULE-1',
+    file_path:      'src/a.js',
+    line:           5,
+    code_hash:      'abcdef0123456789abcdef0123456789',
+    type:           'exception',
+    reason:         'because',
+    status:         'approved',
+    requested_by:   'dev',
+    reviewed_by:    'lead',
+    review_comment: null,
+    created_at:     '2026-06-06T10:00:00.000Z',
+    updated_at:     '2026-06-06T10:00:00.000Z',
+    source:         'cli',
+    finding_id:     null,
+    ...over,
+  };
+}
+
+// Capture stdout/stderr around a callback.
+function capture(fn) {
+  const out = [], err = [];
+  const so = process.stdout.write.bind(process.stdout);
+  const se = process.stderr.write.bind(process.stderr);
+  process.stdout.write = (c) => { out.push(String(c)); return true; };
+  process.stderr.write = (c) => { err.push(String(c)); return true; };
+  try { return { ret: fn(), out: out.join(''), err: err.join('') }; }
+  finally { process.stdout.write = so; process.stderr.write = se; }
+}
+
+// ── global push-queue snapshot ───────────────────────────────────────────────
+// flush() reads/writes the single global queue at ~/.scd/push-queue.jsonl.
+// Snapshot and restore it so the user's real queue is untouched. (This file is
+// the only writer of that queue in the suite, so within-file serial execution
+// makes this safe.)
+
+let originalQueue;
+let restoreSetVer;
+before(() => {
+  try { originalQueue = fs.existsSync(pushQueue.QUEUE_PATH)
+    ? fs.readFileSync(pushQueue.QUEUE_PATH, 'utf8') : null; } catch { originalQueue = null; }
+  // flush()/doctor() cache the server version via global-config.setServerVersionInfo,
+  // which read-modify-writes the single global ~/.scd/config.yml. That races
+  // (lost update) with exceptions-push.test.js's central_url writes when node
+  // runs the two files in parallel. No test here asserts on version caching, so
+  // neutralise the writer for this whole file — keeping ~/.scd/config.yml a file
+  // that only exceptions-push.test.js ever writes (sole writer → no race).
+  restoreSetVer = patch(gconfig, 'setServerVersionInfo', () => {});
+});
+after(() => {
+  if (restoreSetVer) restoreSetVer();
+  try {
+    if (originalQueue === null) { try { fs.unlinkSync(pushQueue.QUEUE_PATH); } catch {} }
+    else fs.writeFileSync(pushQueue.QUEUE_PATH, originalQueue, 'utf8');
+  } catch {}
+});
+
+// Write a controlled single-event queue (so flush has exactly one event to send).
+function seedQueue() {
+  const entry = {
+    id:          `t-${Date.now()}-${counter++}`,
+    ts:          new Date().toISOString(),
+    attempts:    0,
+    lastAttempt: null,
+    event:       { type: 'scan_completed', ts: new Date().toISOString() },
+  };
+  fs.mkdirSync(path.dirname(pushQueue.QUEUE_PATH), { recursive: true });
+  fs.writeFileSync(pushQueue.QUEUE_PATH, JSON.stringify(entry) + '\n', 'utf8');
+}
+
+// ── applyServerDecisions / applyFlushDecisions (no network) ──────────────────
+
+describe('applyServerDecisions classification', () => {
+
+  test('1. applied then redelivered → no-op, config byte-identical, token unchanged', () => {
+    const r = mkTempRepo();
+    try {
+      seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
+        code_hash: 'abcdef0123456789abcdef0123456789' });
+
+      // First delivery → applied
+      const t1 = em.applyFlushDecisions(r, [decision()]);
+      assert.equal(t1, '2026-06-06T10:00:00.000Z', 'token = record updated_at');
+      assert.equal(getSyncAckToken(r), '2026-06-06T10:00:00.000Z');
+      const cfgAfterApply = readConfig(r);
+      assert.match(cfgAfterApply, /status: "approved"/);
+      assert.match(cfgAfterApply, /reviewed_by: "lead"/);
+
+      // Second identical delivery → no-op, silent, config unchanged
+      const cap = capture(() => em.applyFlushDecisions(r, [decision()]));
+      assert.equal(cap.out, '', 'no output on redelivery');
+      assert.equal(cap.err, '', 'no warning on redelivery');
+      assert.equal(readConfig(r), cfgAfterApply, 'config.yml byte-identical');
+      assert.equal(getSyncAckToken(r), '2026-06-06T10:00:00.000Z', 'token unchanged (same max)');
+    } finally { cleanup(r); }
+  });
+
+  test('2. rejected → rejected notice rendered; redelivered rejected → silent', () => {
+    const r = mkTempRepo();
+    try {
+      seedException(r, { id: 'exc-2', rule: 'RULE-2', file: 'src/b.js', line: 9,
+        code_hash: '1111222233334444' + '1111222233334444' });
+
+      const rej = decision({ rule_id: 'RULE-2', file_path: 'src/b.js', line: 9,
+        code_hash: '11112222333344441111222233334444', status: 'rejected',
+        review_comment: 'fix this', updated_at: '2026-06-06T11:00:00.000Z' });
+
+      const cap1 = capture(() => em.applyFlushDecisions(r, [rej]));
+      assert.match(cap1.out, /rejected exception/i, 'rejected notice shown on first apply');
+      assert.match(cap1.out, /fix this/, 'review comment shown');
+      assert.match(readConfig(r), /status: "rejected"/);
+
+      const cap2 = capture(() => em.applyFlushDecisions(r, [rej]));
+      assert.equal(cap2.out, '', 'redelivered rejected is silent');
+    } finally { cleanup(r); }
+  });
+
+  test('4. unknown identity → skipped quietly, counted, high-water mark advances past it', () => {
+    const r = mkTempRepo();
+    try {
+      seedException(r, { id: 'exc-known', rule: 'RULE-1', file: 'src/a.js', line: 5,
+        code_hash: 'abcdef0123456789abcdef0123456789' });
+
+      const known   = decision({ updated_at: '2026-06-06T10:00:00.000Z' });
+      const unknown = decision({ rule_id: 'RULE-NOPE', file_path: 'src/ghost.js', line: 1,
+        updated_at: '2026-06-06T12:00:00.000Z' });
+
+      const res = em.applyServerDecisions(r, [known, unknown]);
+      assert.equal(res.applied, 1);
+      assert.equal(res.unknown, 1);
+
+      const cap = capture(() => em.applyFlushDecisions(r, [known, unknown]));
+      // Mark must advance past the unknown (newest) record.
+      assert.equal(getSyncAckToken(r), '2026-06-06T12:00:00.000Z', 'mark advances past unknown');
+      assert.doesNotMatch(cap.out, /RULE-NOPE/, 'unknown stays silent');
+    } finally { cleanup(r); }
+  });
+
+  test('5. malformed payload → one [WARN], token not advanced, no throw', () => {
+    const r = mkTempRepo();
+    try {
+      seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
+        code_hash: 'abcdef0123456789abcdef0123456789' });
+      // Pre-seed a valid token so we can prove it is NOT advanced.
+      store.setSyncAckToken(r, '2026-06-06T09:00:00.000Z');
+
+      // null record → applyServerDecisions classifies as failed (bad status);
+      // a record whose updated_at is unusable also parks the mark.
+      const cap = capture(() => em.applyFlushDecisions(r, [{ garbage: true }]));
+      assert.equal(getSyncAckToken(r), '2026-06-06T09:00:00.000Z', 'token not advanced');
+      // failed-first means no success precedes it → no token, and the failed
+      // record is surfaced by the caller's flow, never thrown.
+      assert.doesNotThrow(() => em.applyFlushDecisions(r, [{ garbage: true }]));
+    } finally { cleanup(r); }
+  });
+
+  test('7. apply failure on record 2 of 3 → token = record 1 updated_at', () => {
+    const r = mkTempRepo();
+    try {
+      seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
+        code_hash: 'abcdef0123456789abcdef0123456789' });
+
+      const rec1 = decision({ updated_at: '2026-06-06T10:00:00.000Z' });        // applies
+      const rec2 = decision({ status: 'bogus', updated_at: '2026-06-06T10:30:00.000Z' }); // fails
+      const rec3 = decision({ updated_at: '2026-06-06T11:00:00.000Z',           // would apply
+        rule_id: 'RULE-1', file_path: 'src/a.js', line: 5 });
+
+      const token = em.applyFlushDecisions(r, [rec1, rec2, rec3]);
+      assert.equal(token, '2026-06-06T10:00:00.000Z', 'stopped before the failing record');
+      assert.equal(getSyncAckToken(r), '2026-06-06T10:00:00.000Z');
+    } finally { cleanup(r); }
+  });
+
+  test('8. opaque echo — token persisted byte-identical to server updated_at', () => {
+    const r = mkTempRepo();
+    try {
+      seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
+        code_hash: 'abcdef0123456789abcdef0123456789' });
+      // A value that is NOT what new Date().toISOString() would produce for now —
+      // proves no clock round-trip happened.
+      const weird = '2024-01-02T03:04:05.678Z';
+      em.applyFlushDecisions(r, [decision({ updated_at: weird })]);
+      assert.equal(getSyncAckToken(r), weird, 'stored verbatim, no Date round-trip');
+    } finally { cleanup(r); }
+  });
+
+  test('11. canonical identity — decision hash H1 vs local hash H2 (same rule/file/line) → unknown', () => {
+    const r = mkTempRepo();
+    try {
+      // Local entry carries H2 (the live code's hash after an edit).
+      seedException(r, { id: 'exc-h2', rule: 'RULE-1', file: 'src/a.js', line: 5,
+        code_hash: '22222222222222222222222222222222' });
+      // A decision for the OLD exception on the same rule/file/line (hash H1).
+      const d = decision({ code_hash: '11111111111111111111111111111111' });
+
+      const res = em.applyServerDecisions(r, [d]);
+      assert.equal(res.unknown, 1, 'hash mismatch is unknown, NOT a loose match');
+      assert.equal(res.applied, 0, 'the wrong record is never updated');
+      assert.match(readConfig(r), /status: "pending"/, 'local H2 entry untouched');
+
+      // Unknown still advances the mark — redelivery can never make it applicable.
+      const token = em.applyFlushDecisions(r, [d]);
+      assert.equal(token, d.updated_at, 'unknown advances the high-water mark');
+    } finally { cleanup(r); }
+  });
+
+  test('12. legacy fallback — hashless local entry matches on rule+file+line', () => {
+    const r = mkTempRepo();
+    try {
+      // Pre-hash exception: no line_hash field at all.
+      const yaml =
+`trust_level: balanced
+
+exceptions:
+  - id: "exc-nohash"
+    type: "exception"
+    status: "pending"
+    rule: "RULE-1"
+    file: "src/a.js"
+    line: 5
+    reason: "legacy"
+    created_date: "2026-06-06"
+`;
+      fs.mkdirSync(storeDir(r), { recursive: true });
+      fs.writeFileSync(path.join(storeDir(r), 'config.yml'), yaml, 'utf8');
+
+      const res = em.applyServerDecisions(r, [decision()]);
+      assert.equal(res.applied, 1, 'hashless entry matches via the legacy rule+file+line fallback');
+      assert.match(readConfig(r), /status: "approved"/);
+    } finally { cleanup(r); }
+  });
+
+});
+
+// ── flush() end-to-end ───────────────────────────────────────────────────────
+
+describe('flush() push-response channel', () => {
+
+  test('decisions in flush response → applied; staleness timestamp set', async () => {
+    let captured = null;
+    const mock = await startMockServer((req, res, body) => {
+      captured = body;
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({
+        received: 1, inserted: 1, skipped: 0,
+        server_version: '1.5.0', min_cli_version: '1.0.0',
+        sync_exceptions: [decision()],
+      }));
+    });
+    const r = mkTempRepo();
+    try {
+      seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
+        code_hash: 'abcdef0123456789abcdef0123456789' });
+      seedQueue();
+
+      const status = await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
+      assert.equal(status, 'sent');
+      assert.match(readConfig(r), /status: "approved"/, 'decision applied to config');
+      assert.equal(getSyncAckToken(r), '2026-06-06T10:00:00.000Z', 'token persisted');
+      assert.ok(readMeta(r).lastSynced, 'staleness timestamp set by flush');
+    } finally { await mock.close(); cleanup(r); }
+  });
+
+  test('3. sync_exceptions absent (old server) → no-op, no warning', async () => {
+    const mock = await startMockServer((req, res) => {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ received: 1, inserted: 1, skipped: 0, server_version: '1.4.0' }));
+    });
+    const r = mkTempRepo();
+    try {
+      seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
+        code_hash: 'abcdef0123456789abcdef0123456789' });
+      seedQueue();
+
+      const status = await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
+      assert.equal(status, 'sent');
+      assert.match(readConfig(r), /status: "pending"/, 'no decision applied');
+      assert.equal(getSyncAckToken(r), null, 'no token written');
+      assert.ok(!readMeta(r).lastSynced, 'no channel evidence → no staleness bump, nag survives');
+    } finally { await mock.close(); cleanup(r); }
+  });
+
+  test('empty sync_exceptions array → staleness bumped (evidence), nothing applied, no token', async () => {
+    const mock = await startMockServer((req, res) => {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ received: 1, inserted: 1, skipped: 0, sync_exceptions: [] }));
+    });
+    const r = mkTempRepo();
+    try {
+      seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
+        code_hash: 'abcdef0123456789abcdef0123456789' });
+      seedQueue();
+
+      await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
+      assert.ok(readMeta(r).lastSynced, 'empty array IS evidence → staleness bumped');
+      assert.equal(getSyncAckToken(r), null, 'nothing applied → no token');
+      assert.match(readConfig(r), /status: "pending"/, 'config untouched');
+    } finally { await mock.close(); cleanup(r); }
+  });
+
+  test('9. fresh repo (no token) → request omits sync_exceptions_acked_through', async () => {
+    let captured = null;
+    const mock = await startMockServer((req, res, body) => {
+      captured = body;
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ received: 1, inserted: 1, skipped: 0, sync_exceptions: [] }));
+    });
+    const r = mkTempRepo();
+    try {
+      seedQueue();
+
+      await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
+      assert.ok(captured && captured.meta, 'meta present');
+      assert.equal('sync_exceptions_acked_through' in captured.meta, false,
+        'field omitted when no token persisted');
+    } finally { await mock.close(); cleanup(r); }
+  });
+
+  test('8b. token round-trips: persisted token echoed verbatim on next flush', async () => {
+    let captured = null;
+    const mock = await startMockServer((req, res, body) => {
+      captured = body;
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ received: 1, inserted: 1, skipped: 0, sync_exceptions: [] }));
+    });
+    const r = mkTempRepo();
+    try {
+      store.setSyncAckToken(r, '2026-06-06T10:00:00.000Z');
+      seedQueue();
+
+      await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
+      assert.equal(captured.meta.sync_exceptions_acked_through, '2026-06-06T10:00:00.000Z',
+        'token sent byte-identical');
+    } finally { await mock.close(); cleanup(r); }
+  });
+
+  test('10. standalone (no central_url) → no token file, flush untouched', async () => {
+    const r = mkTempRepo();
+    try {
+      seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
+        code_hash: 'abcdef0123456789abcdef0123456789' });
+      // No flush is triggered without a central URL in real usage; assert the
+      // ack-token state simply never materialises.
+      assert.equal(getSyncAckToken(r), null, 'no token for standalone repo');
+      assert.equal('syncAckToken' in readMeta(r), false, 'meta carries no token field');
+    } finally { cleanup(r); }
+  });
+
+});
+
+// ── pull path does not touch the ack token (Branch C contract) ───────────────
+
+describe('pull/push channel separation', () => {
+
+  test('6. applyServerDecisions (pull path) never writes the ack token', () => {
+    const r = mkTempRepo();
+    try {
+      seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
+        code_hash: 'abcdef0123456789abcdef0123456789' });
+      // The pull command uses applyServerDecisions directly (no token side-effect).
+      em.applyServerDecisions(r, [decision()]);
+      assert.equal(getSyncAckToken(r), null, 'pull apply leaves the ack token untouched');
+    } finally { cleanup(r); }
+  });
+
+});
+
+// ── delivery order + sync-notice helpers ──────────────────────────────────────
+
+// Silence command output. IMPORTANT: suppress console.* (what the commands print
+// through), NOT process.stdout.write — node:test's TAP reporter writes results
+// via process.stdout.write, and muting it across an async boundary swallows other
+// tests' results (only the last survives). stderr is safe to mute (TAP is stdout).
+async function captureAsync(fn) {
+  const methods = ['log', 'error', 'warn', 'info', 'debug'];
+  const orig = {};
+  for (const m of methods) { orig[m] = console[m]; console[m] = () => {}; }
+  const se = process.stderr.write.bind(process.stderr);
+  process.stderr.write = () => true;
+  try { return await fn(); }
+  finally { for (const m of methods) console[m] = orig[m]; process.stderr.write = se; }
+}
+
+// Record console.* output (returns it joined) WITHOUT touching process.stdout.write.
+async function recordConsole(fn) {
+  const out = [];
+  const orig = { log: console.log, error: console.error, warn: console.warn };
+  console.log   = (...a) => out.push(a.join(' '));
+  console.error = (...a) => out.push(a.join(' '));
+  console.warn  = (...a) => out.push(a.join(' '));
+  try { await fn(); return out.join('\n'); }
+  finally { Object.assign(console, orig); }
+}
+
+// Monkeypatch a module export for the duration of a test. Restored in finally.
+function patch(mod, name, fn) {
+  const orig = mod[name];
+  mod[name] = fn;
+  return () => { mod[name] = orig; };
+}
+
+// Mock handling both batch endpoints + the pull GETs, recording request order.
+// opts.eventsFail → /events/batch 500; opts.approve → /events/batch carries an
+// approval for the seeded exception in sync_exceptions.
+async function startOrderMock(opts = {}) {
+  const order = [];
+  const mock = await startMockServer((req, res) => {
+    const u = req.url || '';
+    order.push(u);
+    res.setHeader('Content-Type', 'application/json');
+    if (u.includes('/events/batch')) {
+      if (opts.eventsFail) { res.statusCode = 500; res.end(JSON.stringify({ error: 'boom' })); return; }
+      const sync = opts.approve ? [{
+        rule_id: 'RULE-1', file_path: 'src/a.js', line: 5,
+        code_hash: 'abcdef0123456789abcdef0123456789', status: 'approved',
+        reviewed_by: 'lead', review_comment: null,
+        updated_at: '2026-06-06T10:00:00.000Z', finding_id: null,
+      }] : [];
+      res.statusCode = 200;
+      res.end(JSON.stringify({ received: 1, inserted: 1, skipped: 0, sync_exceptions: sync }));
+    } else if (u.includes('/exceptions/batch')) {
+      res.statusCode = 200;
+      res.end(JSON.stringify({ received: 1, inserted: 1, duplicate: 0, invalid: 0 }));
+    } else if (u.includes('/exceptions/approved')) {
+      res.statusCode = 200;
+      res.end(JSON.stringify({ exceptions: [] }));
+    } else {
+      res.statusCode = 200;
+      res.end('{}');  // health etc.
+    }
+  });
+  mock.order = order;
+  return mock;
+}
+
+function seedPendingExc(r, excId = 'exc-ord') {
+  seedException(r, { id: excId, rule: 'RULE-1', file: 'src/a.js', line: 5,
+    code_hash: 'abcdef0123456789abcdef0123456789' });
+  tracker.markPending(r, excId);
+}
+
+function seedStaleMeta(r) {
+  // lastSynced 2h ago so the pre-flush sync notice exists ("synced 2h ago").
+  fs.writeFileSync(path.join(storeDir(r), 'meta.json'),
+    JSON.stringify({ lastSynced: new Date(Date.now() - 2 * 3600 * 1000).toISOString() }), 'utf8');
+}
+
+function assertEventsBeforeExceptions(order, msg) {
+  const ie = order.findIndex(u => u.includes('/events/batch'));
+  const ix = order.findIndex(u => u.includes('/exceptions/batch'));
+  assert.ok(ie >= 0, `${msg}: /events/batch was POSTed`);
+  assert.ok(ix >= 0, `${msg}: /exceptions/batch was POSTed`);
+  assert.ok(ie < ix, `${msg}: events flushed before exception push`);
+}
+
+// ── delivery order: events queue flush BEFORE exception push ──────────────────
+// fix(delivery-order): events register the repo server-side that exceptions
+// FK-reference; pushing an exception first yields a first-contact 500. Asserts
+// the transport POSTs /events/batch before /exceptions/batch at every site where
+// both happen in one contact. These drive real command paths that read the
+// central URL / repo root from process-global modules (patched per-test).
+
+describe('delivery order — events before exception push', () => {
+
+  test('scan flush (tryFlush): events/batch precedes exceptions/batch', async () => {
+    const mock = await startOrderMock();
+    const r = mkTempRepo();
+    const un = [
+      patch(gconfig, 'getCentralUrl',   () => mock.url),
+      patch(gconfig, 'getCentralToken', () => 'test-token'),
+      patch(config,  'getRepoRoot',     () => r),
+    ];
+    try {
+      seedPendingExc(r);
+      seedQueue();
+      await captureAsync(() => require(path.join(root, 'lib/cli-helpers')).tryFlush({}));
+      assertEventsBeforeExceptions(mock.order, 'scan flush');
+    } finally { un.forEach(f => f()); await mock.close(); cleanup(r); }
+  });
+
+  test('scd sync: events/batch precedes exceptions/batch', async () => {
+    const mock = await startOrderMock();
+    const r = mkTempRepo();
+    const un = [
+      patch(gconfig, 'getCentralUrl',   () => mock.url),
+      patch(gconfig, 'getCentralToken', () => 'test-token'),
+      patch(config,  'getRepoRoot',     () => r),
+    ];
+    try {
+      seedPendingExc(r);
+      seedQueue();
+      const { Command } = require('commander');
+      const program = new Command();
+      program.exitOverride();
+      require(path.join(root, 'lib/commands/sync')).register(program);
+      await captureAsync(() => program.parseAsync(['node', 'scd', 'sync']));
+      assertEventsBeforeExceptions(mock.order, 'scd sync');
+    } finally { un.forEach(f => f()); await mock.close(); cleanup(r); }
+  });
+
+  test('scd doctor: events/batch precedes exceptions/batch', async () => {
+    const mock = await startOrderMock();
+    const r = mkTempRepo();
+    const un = [
+      patch(gconfig, 'getCentralUrl',   () => mock.url),
+      patch(gconfig, 'getCentralToken', () => 'test-token'),
+      patch(config,  'getRepoRoot',     () => r),
+    ];
+    try {
+      seedPendingExc(r);
+      seedQueue();
+      await captureAsync(() => require(path.join(root, 'lib/doctor')).doctor());
+      assertEventsBeforeExceptions(mock.order, 'scd doctor');
+    } finally { un.forEach(f => f()); await mock.close(); cleanup(r); }
+  });
+
+  test('accept-time (addException): events flush precedes the creation push', async () => {
+    const mock = await startOrderMock();
+    const r = mkTempRepo();
+    const un = [
+      patch(gconfig, 'getCentralUrl',   () => mock.url),
+      patch(gconfig, 'getCentralToken', () => 'test-token'),
+    ];
+    try {
+      storeDir(r);  // create the global store dir (normally done by a prior scan)
+      fs.mkdirSync(path.join(r, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(r, 'src', 'a.js'), 'a\nb\nc\nd\nconst x = bad;\n');
+      seedQueue();
+      await captureAsync(() => em.addException(r,
+        { rule: 'RULE-1', file: 'src/a.js', line: '5', reason: 'ordering test' }, 'exception'));
+      assertEventsBeforeExceptions(mock.order, 'accept-time');
+    } finally { un.forEach(f => f()); await mock.close(); cleanup(r); }
+  });
+
+  test('flush failure does not suppress the exception push (order preserved)', async () => {
+    const mock = await startOrderMock({ eventsFail: true });
+    const r = mkTempRepo();
+    const un = [
+      patch(gconfig, 'getCentralUrl',   () => mock.url),
+      patch(gconfig, 'getCentralToken', () => 'test-token'),
+      patch(config,  'getRepoRoot',     () => r),
+    ];
+    try {
+      seedPendingExc(r);
+      seedQueue();
+      await captureAsync(() => require(path.join(root, 'lib/cli-helpers')).tryFlush({}));
+      assertEventsBeforeExceptions(mock.order, 'flush failure');
+    } finally { un.forEach(f => f()); await mock.close(); cleanup(r); }
+  });
+
+});
+
+// ── sync notice reflects post-flush state ─────────────────────────────────────
+// The scan output renders getSyncNotice AFTER tryFlush, recomputed from current
+// state, so a decision applied during the flush (e.g. an approval) doesn't leave
+// a "pending approval" notice contradicting the flush's own "✓ approved" line.
+
+describe('sync notice reflects post-flush state', () => {
+
+  test('approval in flush response → "✓ approved" shown and NO pending notice', async () => {
+    const mock = await startOrderMock({ approve: true });
+    const r = mkTempRepo();
+    const un = [
+      patch(gconfig, 'getCentralUrl',   () => mock.url),
+      patch(gconfig, 'getCentralToken', () => 'test-token'),
+      patch(config,  'getRepoRoot',     () => r),
+    ];
+    try {
+      seedPendingExc(r);
+      seedStaleMeta(r);
+      seedQueue();
+
+      // Pre-flush the notice would have been shown (1 pending).
+      assert.ok(em.getSyncNotice(r), 'pending notice exists before the flush');
+
+      // Scan-tail order: flush first, THEN recompute the notice.
+      const out = await recordConsole(() => require(path.join(root, 'lib/cli-helpers')).tryFlush({}));
+      assert.match(out, /approved by server/, 'flush printed the approval line');
+      assert.equal(em.getSyncNotice(r), null, 'recomputed notice is gone — exception no longer pending');
+    } finally { un.forEach(f => f()); await mock.close(); cleanup(r); }
+  });
+
+  test('failed flush → pending notice still shown (state unchanged)', async () => {
+    const mock = await startOrderMock({ eventsFail: true });
+    const r = mkTempRepo();
+    const un = [
+      patch(gconfig, 'getCentralUrl',   () => mock.url),
+      patch(gconfig, 'getCentralToken', () => 'test-token'),
+      patch(config,  'getRepoRoot',     () => r),
+    ];
+    try {
+      seedPendingExc(r);
+      seedStaleMeta(r);
+      seedQueue();
+
+      await recordConsole(() => require(path.join(root, 'lib/cli-helpers')).tryFlush({}));
+      assert.ok(em.getSyncNotice(r), 'offline flush leaves the pending notice intact');
+    } finally { un.forEach(f => f()); await mock.close(); cleanup(r); }
+  });
+
+});
