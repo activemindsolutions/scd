@@ -1,5 +1,37 @@
 # scd – Release Notes
 
+## v1.5.0 (2026-06-06)
+
+This release makes findings and team review decisions first-class, continuously synced state — the largest release since 1.4.0.
+
+**Accumulated findings store.** Findings now persist per repository across scans, so `scd findings` shows your current open state rather than just the last scan's output, with a seen-count and a "first seen / last seen" indicator on each finding. Resolution is driven by scan evidence, never by absence alone: a finding is marked resolved only when a scan that actually covers its file and runs its rule no longer reports it — so a narrowed scan scope or a skipped rule can never silently "resolve" a real problem. One-time note: the identifiers for secret findings migrate to a new content-based scheme on the first scan after upgrade. This is expected, happens once, and is self-healing — you may briefly see a secret finding resolve and reappear under its new identity.
+
+**Team review decisions now arrive automatically.** Approvals and rejections made in scd-server reach the CLI at every contact with the server — `scd scan`, `scd sync`, `scd doctor`, and `scd accept` — without anyone having to remember to run `scd sync`. Delivery is at-least-once with a per-installation cursor (this pairs with the matching scd-server update); duplicate deliveries are applied silently, and you see exactly one line when a decision lands, for example `✓ 1 exception approved by server`. Rejected exceptions flow into the existing rejected-notification path.
+
+**Exception delivery is now guaranteed.** `scd accept` and `scd ignore` no longer fire-and-forget. Each push is acknowledged by the server; undelivered exceptions are tracked locally and retried silently at every server contact, and `scd doctor` shows how many are pending and how long they have waited. This closes the case where a server outage could permanently lose an accepted exception while the CLI reported success.
+
+**Delivery order fixed.** Queued scan events are always sent before exception pushes, so the very first contact from a brand-new repository registers it on the server before any exception that refers to it arrives. Previously this ordering could produce a server error on first contact.
+
+**New `scd queue` command.** `scd queue` (or `scd queue list`) shows everything still waiting to reach the server — both queued scan events (with their delivery attempts and, if stalled, why) and pending exceptions. `scd queue list --stale` narrows the view to stalled entries, and `scd queue reset` makes a stalled queue deliverable again and immediately attempts delivery. This is the first real recovery path for a queue that has stopped sending, and `scd doctor` now points you to it.
+
+**More accurate sync notice.** The "pending approval" notice shown after a scan is now computed after the end-of-scan sync, so it no longer contradicts a decision that was applied during the same scan.
+
+**Fixes.** Corrected color-code formatting in some exception and sync output lines.
+
+**Compatibility.** Full at-least-once decision delivery requires the scd-server build from 2026-06-06 or later. Against an older server the CLI degrades gracefully — the new acknowledgement field is simply omitted and behaviour is unchanged. This release has 260 of 260 automated tests passing.
+
+---
+
+## v1.4.3 (2026-05-29)
+
+This release adds branch awareness to findings reported to scd-server and makes finding identity more consistent across scanners.
+
+**Branch reporting.** Each scan now reports the current git branch — and whether it is the repository's default branch — alongside its findings when connected to scd-server. This lets the server attribute a finding to the branch it was found on and reason about open and resolved state per branch. Repositories that are not git working copies report no branch, which the server treats as the default branch.
+
+**Consistent content-based finding hashes.** The content hash that identifies a finding's code is now computed the same way by every scanner — from the offending line's content alone, never from its file path or line number. This corrects an inconsistency where secret findings were hashed differently, which could cause the same finding to be seen as new. The server stores exactly the hash the CLI sends, so the CLI now defines this consistently end to end.
+
+---
+
 ## v1.4.2 (2026-05-25)
 
 This release fixes several bugs discovered during early usage, improves scan behaviour for non-git directories, and adds visibility into which AI provider is active.
