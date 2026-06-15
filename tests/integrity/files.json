@@ -125,12 +125,6 @@
       "enabled": true
     },
     {
-      "file": "lib/commands/resolve.js",
-      "actual": 943,
-      "minBytes": 660,
-      "enabled": true
-    },
-    {
       "file": "lib/commands/rules.js",
       "actual": 7882,
       "minBytes": 5517,
@@ -320,12 +314,6 @@
       "file": "lib/report-markdown.js",
       "actual": 8841,
       "minBytes": 6188,
-      "enabled": true
-    },
-    {
-      "file": "lib/resolve-manager.js",
-      "actual": 4935,
-      "minBytes": 3454,
       "enabled": true
     },
     {

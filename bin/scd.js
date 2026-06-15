@@ -46,8 +46,6 @@ require('../lib/commands/queue').register(program);
 
 require('../lib/commands/exceptions').register(program);
 
-require('../lib/commands/resolve').register(program);
-
 require('../lib/commands/init').register(program);
 
 require('../lib/commands/remove').register(program);
