@@ -58,7 +58,6 @@ test('scd --help lists all expected commands', () => {
     'accept',
     'ignore',
     'exceptions',
-    'resolve',
     'report',
     'audit',
     'insights',
@@ -87,6 +86,17 @@ test('REGRESSION: scd approve must not exist (renamed to scd accept)', () => {
   // Double-check: accept must exist
   const helpOut = help();
   assert.ok(helpOut.includes('accept'), 'accept command missing from --help');
+});
+
+test('REGRESSION: scd resolve must not exist (retired)', () => {
+  // Retired: automatic evidence-based store reconciliation supersedes it;
+  // kept findings use accept/ignore. Must error as an unknown command.
+  const r = run('resolve');
+  const out = r.stdout + r.stderr;
+  assert.ok(
+    out.includes("unknown command 'resolve'") || r.status !== 0,
+    'resolve appears to be a registered command — it was retired'
+  );
 });
 
 test('REGRESSION: scd store must not exist (renamed to scd repo)', () => {
@@ -300,7 +310,7 @@ test('scd configure --help mentions key flags', () => {
 });
 
 // ---------------------------------------------------------------------------
-// scd hooks / scd doctor / scd sync / scd exceptions / scd resolve
+// scd hooks / scd doctor / scd sync / scd exceptions
 // ---------------------------------------------------------------------------
 
 test('scd hooks --help exits 0', () => {
@@ -317,10 +327,6 @@ test('scd sync --help exits 0', () => {
 
 test('scd exceptions --help exits 0', () => {
   assert.strictEqual(run('exceptions --help').status, 0);
-});
-
-test('scd resolve --help exits 0', () => {
-  assert.strictEqual(run('resolve --help').status, 0);
 });
 
 // ---------------------------------------------------------------------------

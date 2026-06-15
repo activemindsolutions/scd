@@ -187,7 +187,6 @@ Normal interactive behaviour (with a TTY and no `--log-to`) is completely unchan
 |---|---|
 | `scd accept <finding-id> --reason "<text>"` | Accept a risk — requires team lead approval via scd-server |
 | `scd ignore <finding-id> --reason "<text>"` | Ignore a finding (false positive, out of scope) |
-| `scd resolve` | Mark an EXPOSURE finding as handled, or remove a rejected exception |
 | `scd sync` | Pull approvals/rejections from scd-server |
 | `scd exceptions` | List all exceptions and their status |
 | `scd scope --show` | Show current scope exclusions |
@@ -260,11 +259,8 @@ scd ignore f-a1b2c3d4e5 --reason "Source maps intentionally included in staging"
 # Pull approvals/rejections from team server
 scd sync
 
-# List exceptions and their status
+# List exceptions and their status (filter: pending | approved | rejected | all)
 scd exceptions --list all
-
-# Remove a rejected exception after fixing the issue
-scd resolve --rejected exc-mn7k96ml
 ```
 
 Exceptions include a hash of the relevant code line. If the code changes, the exception requires re-approval automatically.
@@ -341,7 +337,7 @@ lib/
   scan-context.js         ← Repo-logging context resolution
   rule-registry.js        ← Normalised catalogue of all rules
   config.js               ← Config loading, isExcepted(), getRuleAction()
-  exception-manager.js    ← Exception/ignore create, sync, resolve
+  exception-manager.js    ← Exception/ignore create, sync, list
   deep-analyzer.js        ← Deep analysis via scd-server
   cli-helpers.js          ← Shared CLI utilities (warnIfOutdated, openInBrowser, tryFlush)
   output-terminal.js      ← Compact + verbose terminal output
