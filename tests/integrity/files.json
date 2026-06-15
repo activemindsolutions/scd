@@ -168,8 +168,8 @@
     },
     {
       "file": "lib/config.js",
-      "actual": 13160,
-      "minBytes": 9212,
+      "actual": 8802,
+      "minBytes": 6161,
       "enabled": true
     },
     {
@@ -188,6 +188,12 @@
       "file": "lib/doctor.js",
       "actual": 9205,
       "minBytes": 6443,
+      "enabled": true
+    },
+    {
+      "file": "lib/exception-gatekeeper.js",
+      "actual": 5675,
+      "minBytes": 3972,
       "enabled": true
     },
     {
