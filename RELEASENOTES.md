@@ -16,6 +16,10 @@ This release makes findings and team review decisions first-class, continuously 
 
 **More accurate sync notice.** The "pending approval" notice shown after a scan is now computed after the end-of-scan sync, so it no longer contradicts a decision that was applied during the same scan.
 
+**`scd accept` and `scd ignore` now work on findings from any scan, including hook scans.** Previously a finding raised by a pre-push hook could be listed by `scd findings` but not accepted or ignored — those commands looked the finding up in the last scan's cache, which a hook scan does not write. They now resolve the finding from the accumulated findings store, the same source `scd findings` reads, so any finding you can see is a finding you can act on. This completes the move to the findings store as the single source of truth for finding identity.
+
+**`scd resolve` removed.** The command predated `scd accept`/`scd ignore` and the findings store. Its finding-resolution mode wrote a manual, time-boxed marker that the store never saw, and its `--rejected` mode destructively deleted a rejected decision — losing the record that the decision was ever made. None of that is needed: findings now resolve automatically on scan evidence (a scan that covers the file and runs the rule no longer reports it), deliberately-kept findings are handled with `scd accept`, and rejected decisions stay visible via `scd exceptions --list rejected`. This removes an obsolete command with no loss of capability.
+
 **Fixes.** Corrected color-code formatting in some exception and sync output lines.
 
 **Compatibility.** Full at-least-once decision delivery requires the scd-server build from 2026-06-06 or later. Against an older server the CLI degrades gracefully — the new acknowledgement field is simply omitted and behaviour is unchanged. This release has 260 of 260 automated tests passing.
