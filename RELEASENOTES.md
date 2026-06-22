@@ -22,7 +22,15 @@ This release makes findings and team review decisions first-class, continuously 
 
 **Exceptions now live in a dedicated store.** Accepted and ignored findings move out of scd's per-repository config file into a dedicated exceptions store at `~/.scd/repos/{id}/exceptions.jsonl`, alongside the findings store — one consistent home for scd's state, kept separate from configuration. The migration is automatic and happens in place on the first run after upgrade: your existing exceptions are carried over, the rest of your configuration is preserved exactly, and no action is required. Decision timestamps are upgraded from date-only to a full timestamp. How you accept, ignore, and review exceptions is unchanged.
 
-**Fixes.** Corrected color-code formatting in some exception and sync output lines.
+**Exception lifecycle — withdraw, review deadlines, and automatic cleanup.** Exceptions are never deleted; they are archived with a reason, so the record of every decision survives. `scd exceptions withdraw <id>` retires an exception you no longer want (replacing the old destructive delete), and `scd exceptions --list archived` shows the history. You can set a review deadline with `scd accept --review-in 30d` (or `2w`, `3m`); when an exception expires its finding becomes visible again and the exception is archived as expired. An accepted-but-not-yet-approved exception is given a short default lifetime so it can't sit forgotten — `scd findings` warns when exceptions are within a week of expiring. When a finding is resolved by a later scan, its exception is archived automatically.
+
+**Un-approved acceptances no longer hide a finding.** When connected to scd-server, an exception is pending until a team-lead approves it — and a pending exception now leaves its finding visible and blocking until that approval lands, rather than suppressing it immediately. This closes a gap where an un-approved "accept" could silently pass a finding. Accepting in standalone mode (no server) is approved on the spot and is unchanged.
+
+**Excepted findings are no longer hidden silently.** `scd findings` now shows a count of how many findings are excepted and points to `scd findings --excepted` (parity with the existing suppressed-findings hint).
+
+**Older-server notice.** When connected to a scd-server older than this CLI expects, scd shows a one-line, non-blocking notice suggesting an upgrade — the mirror of the existing "your CLI is out of date" message.
+
+**Fixes.** `scd list` no longer crashes when a repository's stored metadata is missing its name. Corrected color-code formatting in some exception and sync output lines.
 
 **Compatibility.** Full at-least-once decision delivery requires the scd-server build from 2026-06-06 or later. Against an older server the CLI degrades gracefully — the new acknowledgement field is simply omitted and behaviour is unchanged. This release has 260 of 260 automated tests passing.
 
