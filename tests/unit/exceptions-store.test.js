@@ -25,6 +25,8 @@ const {
   mapConfigExceptionToRecord,
   verifyBootstrapGate,
   MIGRATION_MARKER,
+  buildExceptionRecord,
+  writeExceptions,
 } = require(path.join(repoRoot, 'lib/exceptions-store'));
 const {
   configPath,
@@ -300,6 +302,139 @@ describe('exceptions-store: bootstrap-on-read', () => {
       assert.equal(res.bootstrapped, false);
       assert.deepEqual(res.records, []);
       assert.equal(fs.existsSync(exceptionsPathReadOnly(r)), false);
+    } finally { cleanup(r); }
+  });
+});
+
+describe('exceptions-store: buildExceptionRecord', () => {
+
+  test('happy path: created_at verbatim, reserved fields absent, sync fields only when supplied', () => {
+    const rec = buildExceptionRecord({
+      id: 'exc-1', type: 'exception', tag: 'risk', status: 'approved',
+      rule: 'R1', file: 'f.js', line: 3, line_hash: 'h',
+      reason: 'r', created_at: '2026-06-16T00:00:00.000Z',
+    });
+    assert.equal(rec.created_at, '2026-06-16T00:00:00.000Z');   // taken verbatim, no date math
+    for (const f of ['branch', 'archived_at', 'archive_reason', 'expires', 'review_date',
+                     'db_id', 'reviewed_by', 'review_comment']) {
+      assert.ok(!(f in rec), `${f} must be absent when not supplied`);
+    }
+  });
+
+  test('redacted/hashless case: line_hash omitted, not null', () => {
+    const rec = buildExceptionRecord({
+      id: 'x', type: 'ignore', status: 'pending', rule: 'R', file: 'f', line: 1,
+      reason: 'r', created_at: '2026-06-16T00:00:00.000Z',
+    });
+    assert.ok(!('line_hash' in rec));
+  });
+
+  test('finding_id is never emitted, even when supplied', () => {
+    const rec = buildExceptionRecord({
+      id: 'x', rule: 'R', file: 'f', reason: 'r', created_at: '2026-06-16T00:00:00.000Z',
+      finding_id: 'f-deadbeef00',
+    });
+    assert.ok(!('finding_id' in rec));
+  });
+
+  test('sync fields and reserved fields pass through only when supplied', () => {
+    const rec = buildExceptionRecord({
+      id: 'x', rule: 'R', file: 'f', reason: 'r', created_at: '2026-06-16T00:00:00.000Z',
+      db_id: 9, reviewed_by: 'bob', review_comment: 'ok', branch: 'feature/x',
+    });
+    assert.equal(rec.db_id, 9);
+    assert.equal(rec.reviewed_by, 'bob');
+    assert.equal(rec.review_comment, 'ok');
+    assert.equal(rec.branch, 'feature/x');   // reserved name rides through forward-compat
+  });
+});
+
+describe('exceptions-store: mapConfigExceptionToRecord (re-routed through builder)', () => {
+  // Byte-identical expectations locked against the pre-refactor mapper output.
+
+  test('accept: exact JSON preserved', () => {
+    const out = mapConfigExceptionToRecord({
+      id: 'exc-a', type: 'exception', tag: 'risk', status: 'approved',
+      rule: 'SECRET-008', file: 'src/a.js', line: 12,
+      line_hash: 'abc123abc123abc123abc123abc12345', reason: 'accepted',
+      created_date: '2026-06-16', db_id: 7, reviewed_by: 'alice', review_comment: 'ok',
+    });
+    assert.equal(JSON.stringify(out),
+      '{"id":"exc-a","type":"exception","tag":"risk","status":"approved","rule":"SECRET-008",' +
+      '"file":"src/a.js","line":12,"line_hash":"abc123abc123abc123abc123abc12345","reason":"accepted",' +
+      '"created_at":"2026-06-16T00:00:00.000Z","db_id":7,"reviewed_by":"alice","review_comment":"ok"}');
+  });
+
+  test('ignore: exact JSON preserved', () => {
+    const out = mapConfigExceptionToRecord({
+      id: 'exc-i', type: 'ignore', status: 'approved', rule: 'SECRET-009',
+      file: 'src/b.js', line: 5, line_hash: 'def456def456def456def456def45678',
+      reason: 'fp', created_date: '2026-06-17',
+    });
+    assert.equal(JSON.stringify(out),
+      '{"id":"exc-i","type":"ignore","status":"approved","rule":"SECRET-009","file":"src/b.js",' +
+      '"line":5,"line_hash":"def456def456def456def456def45678","reason":"fp",' +
+      '"created_at":"2026-06-17T00:00:00.000Z"}');
+  });
+
+  test('redacted: hashless, finding_id dropped, exact JSON preserved', () => {
+    const out = mapConfigExceptionToRecord({
+      id: 'exc-r', type: 'ignore', status: 'pending', rule: 'SECRET-010',
+      file: 'src/c.js', line: 8, reason: 'redacted', created_date: '2026-06-18',
+      finding_id: 'f-deadbeef00',
+    });
+    assert.equal(JSON.stringify(out),
+      '{"id":"exc-r","type":"ignore","status":"pending","rule":"SECRET-010","file":"src/c.js",' +
+      '"line":8,"reason":"redacted","created_at":"2026-06-18T00:00:00.000Z"}');
+  });
+
+  test('missing identity still returns null (unchanged)', () => {
+    assert.equal(mapConfigExceptionToRecord({ rule: 'R', file: 'f' }), null);
+  });
+});
+
+describe('exceptions-store: writeExceptions', () => {
+
+  test('writes the full set atomically (0o600, no leftover .tmp) and round-trips', () => {
+    const r = mkTempRepo();
+    try {
+      const recs = [
+        buildExceptionRecord({ id: 'e1', type: 'exception', status: 'approved',
+          rule: 'R1', file: 'a.js', line: 1, line_hash: 'h1', reason: 'x',
+          created_at: '2026-06-16T00:00:00.000Z' }),
+        buildExceptionRecord({ id: 'e2', type: 'ignore', status: 'pending',
+          rule: 'R2', file: 'b.js', line: 2, reason: 'y',
+          created_at: '2026-06-17T00:00:00.000Z' }),
+      ];
+      writeExceptions(r, recs);
+
+      const target = exceptionsPathReadOnly(r);
+      assert.equal(fs.statSync(target).mode & 0o777, 0o600);
+      assert.equal(fs.existsSync(target + '.tmp'), false);
+
+      const back = loadExceptions(r);
+      assert.equal(back.length, 2);
+      assert.deepEqual(back, recs);
+    } finally { cleanup(r); }
+  });
+
+  test('full-set rewrite replaces prior contents (not append)', () => {
+    const r = mkTempRepo();
+    try {
+      writeExceptions(r, [{ id: 'old' }]);
+      writeExceptions(r, [{ id: 'new' }]);
+      const back = loadExceptions(r);
+      assert.equal(back.length, 1);
+      assert.equal(back[0].id, 'new');
+    } finally { cleanup(r); }
+  });
+
+  test('empty set writes an empty store file', () => {
+    const r = mkTempRepo();
+    try {
+      writeExceptions(r, []);
+      assert.equal(fs.existsSync(exceptionsPathReadOnly(r)), true);
+      assert.deepEqual(loadExceptions(r), []);
     } finally { cleanup(r); }
   });
 });
