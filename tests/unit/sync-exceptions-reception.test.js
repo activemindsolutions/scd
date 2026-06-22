@@ -559,6 +559,44 @@ describe('flush() empty-queue pull (E1d)', () => {
   });
 });
 
+// ── #67: a rejected token is surfaced, not silently retried into staleness ────
+
+describe('flush() token rejection (#67)', () => {
+
+  function seedOneEvent(attempts = 3) {
+    fs.writeFileSync(pushQueue.QUEUE_PATH, JSON.stringify({
+      id: 't-67', ts: new Date().toISOString(), attempts, lastAttempt: null,
+      event: { type: 'scan_completed', ts: new Date().toISOString() },
+    }) + '\n', 'utf8');
+  }
+
+  test('401/403 → "auth_failed", attempts NOT bumped, entry flagged + recovers on a valid token', async () => {
+    let code = 403;
+    const mock = await startMockServer((req, res) => {
+      res.statusCode = code;
+      res.end(code === 403 ? JSON.stringify({ error: 'Invalid token' })
+                           : JSON.stringify({ received: 1, inserted: 1, sync_exceptions: [] }));
+    });
+    const r = mkTempRepo();
+    try {
+      seedOneEvent(3);
+      const status = await pushQueue.flush(mock.url, { repoRoot: r });
+      assert.equal(status, 'auth_failed');
+
+      const entry = JSON.parse(fs.readFileSync(pushQueue.QUEUE_PATH, 'utf8').trim());
+      assert.equal(entry.attempts, 3, 'a permanent auth failure must NOT bump attempts toward staleness');
+      assert.equal(entry.lastError, 'auth');
+      assert.equal(pushQueue.listEntries()[0].authBlocked, true, 'surfaced to scd queue');
+
+      // Token fixed → the queue recovers (it was never aged out).
+      code = 200;
+      const status2 = await pushQueue.flush(mock.url, { repoRoot: r });
+      assert.equal(status2, 'sent');
+      assert.equal(fs.readFileSync(pushQueue.QUEUE_PATH, 'utf8').trim(), '', 'delivered once token is valid');
+    } finally { await mock.close(); cleanup(r); }
+  });
+});
+
 // ── pull path does not touch the ack token (Branch C contract) ───────────────
 
 describe('pull/push channel separation', () => {
