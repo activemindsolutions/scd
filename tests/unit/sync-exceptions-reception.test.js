@@ -34,7 +34,8 @@ const pushQueue = require(path.join(root, 'lib/push-queue'));
 const tracker   = require(path.join(root, 'lib/exceptions-push-tracker'));
 const gconfig   = require(path.join(root, 'lib/global-config'));
 const config    = require(path.join(root, 'lib/config'));
-const { storeDir, getSyncAckToken, readMeta } = store;
+const { storeDir, getSyncAckToken, readMeta, exceptionsPathReadOnly } = store;
+const { loadExceptions, writeExceptions, buildExceptionRecord } = require(path.join(root, 'lib/exceptions-store'));
 
 // The Branch C reception tests pass the central URL/token into flush() via
 // arguments, never via ~/.scd/config. The delivery-order + sync-notice tests at
@@ -82,30 +83,38 @@ function cleanup(repoRoot) {
   try { fs.rmSync(repoRoot, { recursive: true, force: true }); } catch {}
 }
 
-// Seed config.yml with one pending exception. The hash field is `line_hash`
-// (writeException's on-disk name); the decision record's code_hash matches it.
+// Seed the machine-local store (Run 2 re-home) with one pending exception. The
+// hash field is `line_hash` (the store's on-disk name); the decision record's
+// code_hash matches it.
 function seedException(repoRoot, ex) {
-  const yaml =
-`# scd test config
-trust_level: balanced
-
-exceptions:
-  - id: "${ex.id}"
-    type: "${ex.type || 'exception'}"
-    status: "${ex.status || 'pending'}"
-    rule: "${ex.rule}"
-    file: "${ex.file}"
-    line: ${ex.line}
-    line_hash: "${ex.code_hash}"
-    reason: "${ex.reason || 'because'}"
-    created_date: "2026-06-06"
-`;
-  fs.mkdirSync(storeDir(repoRoot), { recursive: true });
-  fs.writeFileSync(path.join(storeDir(repoRoot), 'config.yml'), yaml, 'utf8');
+  writeExceptions(repoRoot, [buildExceptionRecord({
+    id:         ex.id,
+    type:       ex.type || 'exception',
+    status:     ex.status || 'pending',
+    rule:       ex.rule,
+    file:       ex.file,
+    line:       ex.line,
+    line_hash:  ex.code_hash || undefined,
+    reason:     ex.reason || 'because',
+    created_at: '2026-06-06T00:00:00.000Z',
+  })]);
 }
 
-function readConfig(repoRoot) {
-  return fs.readFileSync(path.join(storeDir(repoRoot), 'config.yml'), 'utf8');
+// Seed the store with an explicit record array (multi-record / malformed cases).
+function seedStore(repoRoot, records) {
+  writeExceptions(repoRoot, records);
+}
+
+// Raw exceptions.jsonl text (for byte-identical assertions); '' if absent.
+function readStoreRaw(repoRoot) {
+  const p = exceptionsPathReadOnly(repoRoot);
+  return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+}
+
+// A store record by id (or the first record when id omitted).
+function storeRec(repoRoot, id) {
+  const recs = loadExceptions(repoRoot);
+  return id ? recs.find(r => r.id === id) : recs[0];
 }
 
 // A server decision record as delivered in the events/batch response.
@@ -194,15 +203,15 @@ describe('applyServerDecisions classification', () => {
       const t1 = em.applyFlushDecisions(r, [decision()]);
       assert.equal(t1, '2026-06-06T10:00:00.000Z', 'token = record updated_at');
       assert.equal(getSyncAckToken(r), '2026-06-06T10:00:00.000Z');
-      const cfgAfterApply = readConfig(r);
-      assert.match(cfgAfterApply, /status: "approved"/);
-      assert.match(cfgAfterApply, /reviewed_by: "lead"/);
+      const storeAfterApply = readStoreRaw(r);
+      assert.equal(storeRec(r, 'exc-1').status, 'approved');
+      assert.equal(storeRec(r, 'exc-1').reviewed_by, 'lead');
 
-      // Second identical delivery → no-op, silent, config unchanged
+      // Second identical delivery → no-op, silent, store unchanged
       const cap = capture(() => em.applyFlushDecisions(r, [decision()]));
       assert.equal(cap.out, '', 'no output on redelivery');
       assert.equal(cap.err, '', 'no warning on redelivery');
-      assert.equal(readConfig(r), cfgAfterApply, 'config.yml byte-identical');
+      assert.equal(readStoreRaw(r), storeAfterApply, 'exceptions.jsonl byte-identical');
       assert.equal(getSyncAckToken(r), '2026-06-06T10:00:00.000Z', 'token unchanged (same max)');
     } finally { cleanup(r); }
   });
@@ -220,7 +229,7 @@ describe('applyServerDecisions classification', () => {
       const cap1 = capture(() => em.applyFlushDecisions(r, [rej]));
       assert.match(cap1.out, /rejected exception/i, 'rejected notice shown on first apply');
       assert.match(cap1.out, /fix this/, 'review comment shown');
-      assert.match(readConfig(r), /status: "rejected"/);
+      assert.equal(storeRec(r, 'exc-2').status, 'rejected');
 
       const cap2 = capture(() => em.applyFlushDecisions(r, [rej]));
       assert.equal(cap2.out, '', 'redelivered rejected is silent');
@@ -296,30 +305,16 @@ describe('applyServerDecisions classification', () => {
     try {
       // exc-1 (well-formed) matches rec1/rec3; exc-bad has NO status field, so a
       // decision targeting it by id is a genuine apply failure (not a skip).
-      const yaml =
-`trust_level: balanced
-
-exceptions:
-  - id: "exc-1"
-    type: "exception"
-    status: "pending"
-    rule: "RULE-1"
-    file: "src/a.js"
-    line: 5
-    line_hash: "abcdef0123456789abcdef0123456789"
-    reason: "ok"
-    created_date: "2026-06-06"
-  - id: "exc-bad"
-    type: "exception"
-    rule: "RULE-2"
-    file: "src/b.js"
-    line: 9
-    line_hash: "00000000000000000000000000000000"
-    reason: "malformed - no status line"
-    created_date: "2026-06-06"
-`;
-      fs.mkdirSync(storeDir(r), { recursive: true });
-      fs.writeFileSync(path.join(storeDir(r), 'config.yml'), yaml, 'utf8');
+      seedStore(r, [
+        buildExceptionRecord({ id: 'exc-1', type: 'exception', status: 'pending',
+          rule: 'RULE-1', file: 'src/a.js', line: 5,
+          line_hash: 'abcdef0123456789abcdef0123456789', reason: 'ok',
+          created_at: '2026-06-06T00:00:00.000Z' }),
+        // Raw record with NO status field (malformed local state).
+        { id: 'exc-bad', type: 'exception', rule: 'RULE-2', file: 'src/b.js', line: 9,
+          line_hash: '00000000000000000000000000000000', reason: 'malformed - no status',
+          created_at: '2026-06-06T00:00:00.000Z' },
+      ]);
 
       const rec1 = decision({ updated_at: '2026-06-06T10:00:00.000Z' });               // applies (exc-1)
       const rec2 = decision({ status: 'approved', id: 'exc-bad', rule_id: 'RULE-2',     // genuine failure
@@ -362,7 +357,7 @@ exceptions:
       const res = em.applyServerDecisions(r, [d]);
       assert.equal(res.unknown, 1, 'hash mismatch is unknown, NOT a loose match');
       assert.equal(res.applied, 0, 'the wrong record is never updated');
-      assert.match(readConfig(r), /status: "pending"/, 'local H2 entry untouched');
+      assert.equal(storeRec(r, 'exc-h2').status, 'pending', 'local H2 entry untouched');
 
       // Unknown still advances the mark — redelivery can never make it applicable.
       const token = em.applyFlushDecisions(r, [d]);
@@ -374,25 +369,13 @@ exceptions:
     const r = mkTempRepo();
     try {
       // Pre-hash exception: no line_hash field at all.
-      const yaml =
-`trust_level: balanced
-
-exceptions:
-  - id: "exc-nohash"
-    type: "exception"
-    status: "pending"
-    rule: "RULE-1"
-    file: "src/a.js"
-    line: 5
-    reason: "legacy"
-    created_date: "2026-06-06"
-`;
-      fs.mkdirSync(storeDir(r), { recursive: true });
-      fs.writeFileSync(path.join(storeDir(r), 'config.yml'), yaml, 'utf8');
+      seedStore(r, [buildExceptionRecord({ id: 'exc-nohash', type: 'exception',
+        status: 'pending', rule: 'RULE-1', file: 'src/a.js', line: 5, reason: 'legacy',
+        created_at: '2026-06-06T00:00:00.000Z' })]);
 
       const res = em.applyServerDecisions(r, [decision()]);
       assert.equal(res.applied, 1, 'hashless entry matches via the legacy rule+file+line fallback');
-      assert.match(readConfig(r), /status: "approved"/);
+      assert.equal(storeRec(r, 'exc-nohash').status, 'approved');
     } finally { cleanup(r); }
   });
 
@@ -422,7 +405,7 @@ describe('flush() push-response channel', () => {
 
       const status = await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
       assert.equal(status, 'sent');
-      assert.match(readConfig(r), /status: "approved"/, 'decision applied to config');
+      assert.equal(storeRec(r, 'exc-1').status, 'approved', 'decision applied to store');
       assert.equal(getSyncAckToken(r), '2026-06-06T10:00:00.000Z', 'token persisted');
       assert.ok(readMeta(r).lastSynced, 'staleness timestamp set by flush');
     } finally { await mock.close(); cleanup(r); }
@@ -442,7 +425,7 @@ describe('flush() push-response channel', () => {
 
       const status = await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
       assert.equal(status, 'sent');
-      assert.match(readConfig(r), /status: "pending"/, 'no decision applied');
+      assert.equal(storeRec(r, 'exc-1').status, 'pending', 'no decision applied');
       assert.equal(getSyncAckToken(r), null, 'no token written');
       assert.ok(!readMeta(r).lastSynced, 'no channel evidence → no staleness bump, nag survives');
     } finally { await mock.close(); cleanup(r); }
@@ -463,7 +446,7 @@ describe('flush() push-response channel', () => {
       await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
       assert.ok(readMeta(r).lastSynced, 'empty array IS evidence → staleness bumped');
       assert.equal(getSyncAckToken(r), null, 'nothing applied → no token');
-      assert.match(readConfig(r), /status: "pending"/, 'config untouched');
+      assert.equal(storeRec(r, 'exc-1').status, 'pending', 'store untouched');
     } finally { await mock.close(); cleanup(r); }
   });
 

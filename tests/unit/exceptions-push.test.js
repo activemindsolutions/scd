@@ -31,6 +31,7 @@ const root = path.resolve(__dirname, '../..');
 const tracker = require(path.join(root, 'lib/exceptions-push-tracker'));
 const { pushPendingExceptions } = require(path.join(root, 'lib/exception-manager'));
 const { exceptionsPushPathReadOnly, storeDir } = require(path.join(root, 'lib/store'));
+const { writeExceptions, buildExceptionRecord } = require(path.join(root, 'lib/exceptions-store'));
 const globalConfig = require(path.join(root, 'lib/global-config'));
 
 // ── HTTP mock ──────────────────────────────────────────────────────────────
@@ -75,25 +76,20 @@ function cleanup(repoRoot) {
   try { fs.rmSync(repoRoot, { recursive: true, force: true }); } catch {}
 }
 
+// Seed the machine-local store (Run 2 re-home) — pushPendingExceptions resolves
+// the delivery payload from exceptions.jsonl, not config.yml.
 function seedConfigWithException(repoRoot, exception) {
-  const yaml =
-`# scd test config
-trust_level: balanced
-
-exceptions:
-  - id: "${exception.id}"
-    type: "${exception.type}"
-    status: "${exception.status}"
-    rule: "${exception.rule}"
-    file: "${exception.file}"
-    line: ${exception.line}
-    line_hash: "${exception.code_hash}"
-    reason: "${exception.reason}"
-    created_date: "2026-06-05"
-`;
-  fs.mkdirSync(storeDir(repoRoot), { recursive: true });
-  const cfg = path.join(storeDir(repoRoot), 'config.yml');
-  fs.writeFileSync(cfg, yaml, 'utf8');
+  writeExceptions(repoRoot, [buildExceptionRecord({
+    id:         exception.id,
+    type:       exception.type,
+    status:     exception.status,
+    rule:       exception.rule,
+    file:       exception.file,
+    line:       exception.line,
+    line_hash:  exception.code_hash || undefined,
+    reason:     exception.reason,
+    created_at: '2026-06-05T00:00:00.000Z',
+  })]);
 }
 
 // ── central-url snapshot helpers ───────────────────────────────────────────
@@ -311,7 +307,7 @@ describe('pushPendingExceptions', () => {
     } finally { await mock.close(); cleanup(r); }
   });
 
-  test('orphan in tracker (id not in config.yml) → silently dropped', async () => {
+  test('orphan in tracker (id not in store) → silently dropped', async () => {
     const mock = await startMockServer((req, res) => {
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json');
@@ -322,10 +318,8 @@ describe('pushPendingExceptions', () => {
       globalConfig.setCentralUrl(mock.url);
       globalConfig.setCentralToken('test-token');
 
-      // Tracker has an id but config.yml does not (user deleted the exception)
-      fs.mkdirSync(storeDir(r), { recursive: true });
-      fs.writeFileSync(path.join(storeDir(r), 'config.yml'),
-        '# empty\ntrust_level: balanced\nexceptions:\n', 'utf8');
+      // Tracker has an id but the store does not (user deleted the exception)
+      writeExceptions(r, []);
       tracker.markPending(r, 'exc-orphan');
 
       const result = await pushPendingExceptions(r);
