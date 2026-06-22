@@ -256,26 +256,80 @@ describe('applyServerDecisions classification', () => {
       // Pre-seed a valid token so we can prove it is NOT advanced.
       store.setSyncAckToken(r, '2026-06-06T09:00:00.000Z');
 
-      // null record → applyServerDecisions classifies as failed (bad status);
-      // a record whose updated_at is unusable also parks the mark.
+      // A garbage record has no usable updated_at: applyServerDecisions classifies
+      // it as 'skipped' (unsupported status — see the unknown-status guard), but the
+      // flush mark loop still parks because it cannot name an unusable updated_at.
+      // Either way the token does not advance.
       const cap = capture(() => em.applyFlushDecisions(r, [{ garbage: true }]));
       assert.equal(getSyncAckToken(r), '2026-06-06T09:00:00.000Z', 'token not advanced');
-      // failed-first means no success precedes it → no token, and the failed
-      // record is surfaced by the caller's flow, never thrown.
+      // Unusable updated_at parks the mark → no token, and the record is never thrown.
       assert.doesNotThrow(() => em.applyFlushDecisions(r, [{ garbage: true }]));
     } finally { cleanup(r); }
   });
 
-  test('7. apply failure on record 2 of 3 → token = record 1 updated_at', () => {
+  test('7. unsupported status (e.g. resolved) mid-batch → skipped, mark advances past it (no ack jam)', () => {
     const r = mkTempRepo();
     try {
       seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
         code_hash: 'abcdef0123456789abcdef0123456789' });
 
-      const rec1 = decision({ updated_at: '2026-06-06T10:00:00.000Z' });        // applies
-      const rec2 = decision({ status: 'bogus', updated_at: '2026-06-06T10:30:00.000Z' }); // fails
-      const rec3 = decision({ updated_at: '2026-06-06T11:00:00.000Z',           // would apply
-        rule_id: 'RULE-1', file_path: 'src/a.js', line: 5 });
+      const rec1 = decision({ updated_at: '2026-06-06T10:00:00.000Z' });               // applies
+      const rec2 = decision({ status: 'resolved', updated_at: '2026-06-06T10:30:00.000Z' }); // unsupported → skipped
+      const rec3 = decision({ updated_at: '2026-06-06T11:00:00.000Z' });               // applies
+
+      // Classification: the unsupported status is benign 'skipped', NOT 'failed'.
+      const res = em.applyServerDecisions(r, [rec1, rec2, rec3]);
+      assert.equal(res.skipped, 1, 'unsupported status counted as skipped');
+      assert.equal(res.failed, 0, 'unsupported status must not be a failure');
+      assert.equal(res.records[1].outcome, 'skipped');
+
+      // The mark advances PAST the skipped record to the last applied one — the
+      // skipped record (and everything after it) is NOT jammed/redelivered forever.
+      const token = em.applyFlushDecisions(r, [rec1, rec2, rec3]);
+      assert.equal(token, '2026-06-06T11:00:00.000Z', 'mark advances past the skipped record');
+      assert.equal(getSyncAckToken(r), '2026-06-06T11:00:00.000Z');
+    } finally { cleanup(r); }
+  });
+
+  test('7b. genuine apply failure mid-batch → mark parks at the prior success', () => {
+    const r = mkTempRepo();
+    try {
+      // exc-1 (well-formed) matches rec1/rec3; exc-bad has NO status field, so a
+      // decision targeting it by id is a genuine apply failure (not a skip).
+      const yaml =
+`trust_level: balanced
+
+exceptions:
+  - id: "exc-1"
+    type: "exception"
+    status: "pending"
+    rule: "RULE-1"
+    file: "src/a.js"
+    line: 5
+    line_hash: "abcdef0123456789abcdef0123456789"
+    reason: "ok"
+    created_date: "2026-06-06"
+  - id: "exc-bad"
+    type: "exception"
+    rule: "RULE-2"
+    file: "src/b.js"
+    line: 9
+    line_hash: "00000000000000000000000000000000"
+    reason: "malformed - no status line"
+    created_date: "2026-06-06"
+`;
+      fs.mkdirSync(storeDir(r), { recursive: true });
+      fs.writeFileSync(path.join(storeDir(r), 'config.yml'), yaml, 'utf8');
+
+      const rec1 = decision({ updated_at: '2026-06-06T10:00:00.000Z' });               // applies (exc-1)
+      const rec2 = decision({ status: 'approved', id: 'exc-bad', rule_id: 'RULE-2',     // genuine failure
+        file_path: 'src/b.js', line: 9, code_hash: '00000000000000000000000000000000',
+        updated_at: '2026-06-06T10:30:00.000Z' });
+      const rec3 = decision({ updated_at: '2026-06-06T11:00:00.000Z' });               // would apply (exc-1)
+
+      const res = em.applyServerDecisions(r, [rec1, rec2, rec3]);
+      assert.equal(res.failed, 1, 'matched-but-malformed entry is a genuine failure');
+      assert.equal(res.records[1].outcome, 'failed');
 
       const token = em.applyFlushDecisions(r, [rec1, rec2, rec3]);
       assert.equal(token, '2026-06-06T10:00:00.000Z', 'stopped before the failing record');
