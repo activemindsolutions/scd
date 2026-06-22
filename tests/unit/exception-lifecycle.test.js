@@ -22,7 +22,7 @@ const root = path.resolve(__dirname, '../..');
 const em     = require(path.join(root, 'lib/exception-manager'));
 const store  = require(path.join(root, 'lib/store'));
 const estore = require(path.join(root, 'lib/exceptions-store'));
-const { reconcileException } = require(path.join(root, 'lib/exception-gatekeeper'));
+const { reconcileException, effectiveExpiry, PENDING_TTL_DAYS } = require(path.join(root, 'lib/exception-gatekeeper'));
 const { makeCodeHash } = require(path.join(root, 'lib/finding-identity'));
 
 let counter = 0;
@@ -136,6 +136,65 @@ describe('E1c.2 archive lifecycle', () => {
       assert.match(arch, /exc-arch/);
       assert.doesNotMatch(arch, /exc-live/);
       assert.match(arch, /Archived: withdrawn/, 'archive reason badge shown');
+    } finally { cleanup(r); }
+  });
+});
+
+const days = (n) => new Date(Date.now() + n * 86400000).toISOString();
+const ago  = (n) => new Date(Date.now() - n * 86400000).toISOString();
+
+describe('§7 — only approved excepts (un-approved does not suppress)', () => {
+
+  test('approved excepts; pending does NOT; rejected → rejected', () => {
+    assert.equal(reconcileException(FINDING, [mkExc('e', { status: 'approved' })]).excepted, true);
+
+    const pend = reconcileException(FINDING, [mkExc('e', { status: 'pending' })]);
+    assert.equal(pend.excepted, false, 'pending must not suppress its finding');
+    assert.equal(pend.pending, true);
+
+    assert.equal(reconcileException(FINDING, [mkExc('e', { status: 'rejected' })]).rejected, true);
+  });
+});
+
+describe('E1c.3 — expiry and review deadlines', () => {
+
+  test('effectiveExpiry: explicit wins; pending gets default TTL; approved without expires never expires', () => {
+    assert.equal(effectiveExpiry(mkExc('e', { status: 'approved' })), null);
+
+    const pendExp = effectiveExpiry(mkExc('e', { status: 'pending', created_at: '2026-06-01T00:00:00.000Z' }));
+    const expected = new Date(new Date('2026-06-01T00:00:00.000Z').getTime() + PENDING_TTL_DAYS * 86400000);
+    assert.equal(pendExp.toISOString(), expected.toISOString());
+
+    const explicit = effectiveExpiry(mkExc('e', { status: 'pending', expires: days(5), created_at: ago(100) }));
+    assert.equal(explicit.toISOString().slice(0, 10), days(5).slice(0, 10), 'explicit expires overrides pending TTL');
+  });
+
+  test('gatekeeper: expired (explicit + pending-TTL) → expired, not excepted', () => {
+    assert.equal(reconcileException(FINDING, [mkExc('e', { status: 'approved', expires: ago(1) })]).expired, true);
+    assert.equal(reconcileException(FINDING, [mkExc('e', { status: 'pending', created_at: ago(PENDING_TTL_DAYS + 5) })]).expired, true);
+    assert.equal(reconcileException(FINDING, [mkExc('e', { status: 'approved', expires: days(30) })]).excepted, true);
+  });
+
+  test('expiry is checked after identity match — no cross-file mislabel', () => {
+    const other = { ruleId: 'SECRET-008', filePath: 'src/OTHER.js', codeHash: 'zzz', line: 9, snippet: 'x' };
+    const r = reconcileException(other, [mkExc('e', { status: 'approved', expires: ago(1) })]);
+    assert.equal(r.expired, false, 'an expired exception for a different file must not mark this finding expired');
+    assert.equal(r.exception, null);
+  });
+
+  test('archiveExpiredExceptions: archives expired (explicit + pending-TTL) as review_expired, leaves active', () => {
+    const r = mkTempRepo();
+    try {
+      estore.writeExceptions(r, [
+        mkExc('exc-exp',  { status: 'approved', expires: ago(1) }),
+        mkExc('exc-pend', { status: 'pending', created_at: ago(PENDING_TTL_DAYS + 10) }),
+        mkExc('exc-ok',   { status: 'approved' }),
+      ]);
+      assert.equal(em.archiveExpiredExceptions(r).archived, 2);
+      const byId = Object.fromEntries(estore.loadExceptions(r).map(e => [e.id, e]));
+      assert.equal(byId['exc-exp'].archive_reason, 'review_expired');
+      assert.equal(byId['exc-pend'].archive_reason, 'review_expired');
+      assert.equal(byId['exc-ok'].archived_at, undefined, 'active exception untouched');
     } finally { cleanup(r); }
   });
 });
