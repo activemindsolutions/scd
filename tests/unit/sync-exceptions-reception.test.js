@@ -502,6 +502,63 @@ describe('flush() push-response channel', () => {
 
 });
 
+// ── E1d: empty-queue contact still pulls decisions (always-POST) ─────────────
+
+describe('flush() empty-queue pull (E1d)', () => {
+
+  function emptyQueue() { fs.writeFileSync(pushQueue.QUEUE_PATH, '', 'utf8'); }
+
+  test('empty queue + pullDecisions → POSTs empty batch and applies decisions; returns "empty"', async () => {
+    let captured = null;
+    const mock = await startMockServer((req, res, body) => {
+      captured = body;
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ received: 0, inserted: 0, sync_exceptions: [decision()] }));
+    });
+    const r = mkTempRepo();
+    try {
+      seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
+        code_hash: 'abcdef0123456789abcdef0123456789' });
+      emptyQueue();
+
+      const status = await pushQueue.flush(mock.url, { repoRoot: r, pullDecisions: true });
+      assert.equal(status, 'empty', 'queue state is empty even though a contact was made');
+      assert.ok(captured && Array.isArray(captured.events) && captured.events.length === 0,
+        'POSTed an empty events batch');
+      assert.equal(storeRec(r, 'exc-1').status, 'approved', 'piggybacked decision applied');
+    } finally { await mock.close(); cleanup(r); }
+  });
+
+  test('empty queue WITHOUT pullDecisions → no POST (unchanged)', async () => {
+    let contacted = false;
+    const mock = await startMockServer((req, res) => {
+      contacted = true;
+      res.statusCode = 200; res.end('{}');
+    });
+    const r = mkTempRepo();
+    try {
+      emptyQueue();
+      const status = await pushQueue.flush(mock.url, { repoRoot: r });
+      assert.equal(status, 'empty');
+      assert.equal(contacted, false, 'no server contact without pullDecisions');
+    } finally { await mock.close(); cleanup(r); }
+  });
+
+  test('unreachable on empty pull contact → "empty", no throw, nothing lost', async () => {
+    const r = mkTempRepo();
+    try {
+      emptyQueue();
+      let status;
+      await assert.doesNotReject(async () => {
+        status = await pushQueue.flush('http://127.0.0.1:1', { repoRoot: r, pullDecisions: true });
+      });
+      assert.equal(status, 'empty');
+      assert.equal(fs.readFileSync(pushQueue.QUEUE_PATH, 'utf8').trim(), '', 'queue still empty');
+    } finally { cleanup(r); }
+  });
+});
+
 // ── pull path does not touch the ack token (Branch C contract) ───────────────
 
 describe('pull/push channel separation', () => {
