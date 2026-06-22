@@ -20,6 +20,8 @@ This release makes findings and team review decisions first-class, continuously 
 
 **`scd resolve` removed.** The command predated `scd accept`/`scd ignore` and the findings store. Its finding-resolution mode wrote a manual, time-boxed marker that the store never saw, and its `--rejected` mode destructively deleted a rejected decision — losing the record that the decision was ever made. None of that is needed: findings now resolve automatically on scan evidence (a scan that covers the file and runs the rule no longer reports it), deliberately-kept findings are handled with `scd accept`, and rejected decisions stay visible via `scd exceptions --list rejected`. This removes an obsolete command with no loss of capability.
 
+**Exceptions now live in a dedicated store.** Accepted and ignored findings move out of scd's per-repository config file into a dedicated exceptions store at `~/.scd/repos/{id}/exceptions.jsonl`, alongside the findings store — one consistent home for scd's state, kept separate from configuration. The migration is automatic and happens in place on the first run after upgrade: your existing exceptions are carried over, the rest of your configuration is preserved exactly, and no action is required. Decision timestamps are upgraded from date-only to a full timestamp. How you accept, ignore, and review exceptions is unchanged.
+
 **Fixes.** Corrected color-code formatting in some exception and sync output lines.
 
 **Compatibility.** Full at-least-once decision delivery requires the scd-server build from 2026-06-06 or later. Against an older server the CLI degrades gracefully — the new acknowledgement field is simply omitted and behaviour is unchanged. This release has 260 of 260 automated tests passing.
