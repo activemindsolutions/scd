@@ -1,8 +1,8 @@
 # scd – Release Notes
 
-## v1.5.0 (2026-06-06)
+## v1.5.0 (2026-06-23)
 
-This release makes findings and team review decisions first-class, continuously synced state — the largest release since 1.4.0.
+This release makes findings and team review decisions first-class, continuously synced state — the largest release since 1.4.0 — and it brings a refreshed, easier-to-read command-line experience.
 
 **Accumulated findings store.** Findings now persist per repository across scans, so `scd findings` shows your current open state rather than just the last scan's output, with a seen-count and a "first seen / last seen" indicator on each finding. Resolution is driven by scan evidence, never by absence alone: a finding is marked resolved only when a scan that actually covers its file and runs its rule no longer reports it — so a narrowed scan scope or a skipped rule can never silently "resolve" a real problem. One-time note: the identifiers for secret findings migrate to a new content-based scheme on the first scan after upgrade. This is expected, happens once, and is self-healing — you may briefly see a secret finding resolve and reappear under its new identity.
 
@@ -30,9 +30,15 @@ This release makes findings and team review decisions first-class, continuously 
 
 **Older-server notice.** When connected to a scd-server older than this CLI expects, scd shows a one-line, non-blocking notice suggesting an upgrade — the mirror of the existing "your CLI is out of date" message.
 
-**Fixes.** `scd list` no longer crashes when a repository's stored metadata is missing its name. Corrected color-code formatting in some exception and sync output lines.
+**A redesigned, easier-to-read findings list.** `scd findings` is now grouped by severity, most critical first, so you can read top-down and stop once you have seen what matters — instead of scrolling a long file-by-file list. Each finding is a single line led by its finding-id, the value you copy into `scd findings <id>`, `scd accept`, and `scd ignore`, so it is the first thing you see rather than buried mid-line. The code snippet and the full problem/scenario/fix detail moved to `scd findings --verbose` and the single-finding view, which keeps the list compact — roughly half the length on a large repository. `scd findings --by-file` keeps the previous file-grouped view, and on terminals that support it the file location is clickable to open the offending line in your editor. Excepted findings are now flagged with a warning at both the top and bottom of the list, so a deliberately accepted risk is hard to miss.
 
-**Compatibility.** Full at-least-once decision delivery requires the scd-server build from 2026-06-06 or later. Against an older server the CLI degrades gracefully — the new acknowledgement field is simply omitted and behaviour is unchanged. This release has 260 of 260 automated tests passing.
+**A cleaner, consistent look across the tool.** Severity now reads as a colored label — `CRIT`, `HIGH`, `MED`, `EXPO` — with a distinct color per level, replacing the previous round icons (HIGH and MEDIUM no longer share a color). The same treatment is applied everywhere severity appears: `scd scan`, `--deep` analysis, `scd insights`, and the HTML and Markdown reports. `scd insights` patterns now carry a clear signal label — RISK, WARN, NOTE, or a positive GOOD for improving trends. Success, warning, error and info symbols are unified across every command, and the reports carry a refreshed `{scd}` header.
+
+**Times shown in your local timezone.** Timestamps in command output and reports are now shown consistently in your local time, with no stray UTC labels. Stored scan data and anything sent to scd-server remain in UTC.
+
+**Fixes.** `scd list` no longer crashes when a repository's stored metadata is missing its name. Corrected color-code formatting in some exception and sync output lines, and a few remaining command-output strings now read consistently in English.
+
+**Compatibility.** Full at-least-once decision delivery requires the scd-server build from 2026-06-06 or later. Against an older server the CLI degrades gracefully — the new acknowledgement field is simply omitted and behaviour is unchanged. This release has 319 of 319 automated tests passing.
 
 ---
 
