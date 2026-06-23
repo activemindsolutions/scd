@@ -36,6 +36,8 @@ This release makes findings and team review decisions first-class, continuously 
 
 **Times shown in your local timezone.** Timestamps in command output and reports are now shown consistently in your local time, with no stray UTC labels. Stored scan data and anything sent to scd-server remain in UTC.
 
+**Reports are now fully self-contained.** scd's HTML reports previously loaded their web fonts from an external font service when opened. They no longer make any network request at all — reports render entirely from local system fonts, so nothing about a report leaves your machine and reports behave identically offline and in air-gapped environments. This keeps scd's reporting consistent with its self-hosted, privacy-first design: scanning, reporting, and review never contact a third party.
+
 **Fixes.** `scd list` no longer crashes when a repository's stored metadata is missing its name. Corrected color-code formatting in some exception and sync output lines, and a few remaining command-output strings now read consistently in English.
 
 **Compatibility.** Full at-least-once decision delivery requires the scd-server build from 2026-06-06 or later. Against an older server the CLI degrades gracefully — the new acknowledgement field is simply omitted and behaviour is unchanged. This release has 319 of 319 automated tests passing.
