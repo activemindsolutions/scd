@@ -23,12 +23,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 CLARIFICATION OF USE
 
 Using scd as a development tool — running `scd scan`, `scd install`, or any other scd
-command to analyse your own code — does not constitute incorporation or distribution of
-scd and does not impose any license obligations on your software or its license.
+command to analyse your own code — does not constitute incorporation, modification,
+conveying, or distribution of scd, and imposes no license obligation on your software
+or its license.
 
-The AGPL-3.0 applies if you incorporate scd's source code into your own product,
-distribute scd as part of a commercial offering, or use scd as a component of a
-network-accessible service provided to third parties.
+In particular, the network-use provision of AGPL-3.0 (Section 13) is NOT triggered by
+using scd to analyse code that is itself part of a networked or hosted service. scd is a
+self-contained tool that you run; it does not become a covered work of, or a component
+made available to the users of, your service merely because you used it to scan that
+service's code.
+
+The AGPL-3.0 copyleft obligations — including the Section 13 network-copyleft requirement —
+apply only if you modify scd and convey it, incorporate scd's source code into your own
+product, distribute scd as part of a commercial offering, or make a modified version of scd
+itself available to third parties over a network. In those cases, and only those, the
+AGPL-3.0 applies as written.
 
 If you are unsure whether your use case requires a commercial license, contact
 info@activemind.se.

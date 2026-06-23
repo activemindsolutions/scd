@@ -5,6 +5,8 @@
 [![npm](https://img.shields.io/npm/v/@activemind/scd)](https://www.npmjs.com/package/@activemind/scd)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE.md)
 
+> **License & use** — scd is AGPL-3.0. Using scd to scan your own code imposes **no** license obligations on your code; the AGPL (including its Section 13 network-copyleft) applies only if you modify and redistribute scd itself or embed its source in your product. See [Clarification of Use](LICENSE.md).
+
 > **Actively developed.** Rules are continuously refined based on real-world scanning data across thousands of repositories. Use `--severity critical` to start with the highest-confidence findings, and expect precision to improve with each release.
 
 Secure Code by Design (`scd`) is a CLI tool that catches security vulnerabilities before they reach production — running quietly in the background via git hooks and on-demand scans. Built for SMB companies using traditional coding and AI coding tools (Claude Code, GitHub Copilot, Cursor) which generates code faster than their security awareness can keep up with.
