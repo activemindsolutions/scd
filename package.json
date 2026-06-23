@@ -1,6 +1,6 @@
 {
   "name": "@activemind/scd",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "description": "Secure Code by Design – automated security scanning for development teams",
   "author": "Activemind Solutions AB",
   "license": "SEE LICENSE IN LICENSE.md",
