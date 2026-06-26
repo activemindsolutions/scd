@@ -25,13 +25,24 @@ const WORKER = `
   const { withFileLock } = require(${JSON.stringify(LOCK_MODULE)});
   const target = process.env.TARGET;
   const key    = process.env.KEY;
-  withFileLock(target, () => {
-    let data = {};
-    try { data = JSON.parse(fs.readFileSync(target, 'utf8')); } catch {}
-    const t = Date.now(); while (Date.now() - t < 8) {}   // widen read→write window
-    data[key] = true;
-    fs.writeFileSync(target, JSON.stringify(data));
-  });
+  // Retry on ELOCKED — decision (a) makes withFileLock throw rather than steal a
+  // live holder, so a real caller retries. The test verifies the no-lost-update
+  // INVARIANT, not contention timing.
+  for (let tries = 0; ; tries++) {
+    try {
+      withFileLock(target, () => {
+        let data = {};
+        try { data = JSON.parse(fs.readFileSync(target, 'utf8')); } catch {}
+        const t = Date.now(); while (Date.now() - t < 8) {}   // widen read→write window
+        data[key] = true;
+        fs.writeFileSync(target, JSON.stringify(data));
+      });
+      break;
+    } catch (e) {
+      if (e.code === 'ELOCKED' && tries < 500) { const s = Date.now(); while (Date.now() - s < 20) {} continue; }
+      throw e;
+    }
+  }
 `;
 
 function runWorker(target, key) {
