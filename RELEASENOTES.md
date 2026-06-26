@@ -1,5 +1,11 @@
 # scd – Release Notes
 
+## v1.5.1 — unreleased
+
+A reliability fix for concurrent use.
+
+**Concurrent writes no longer lose data.** When two scans — or a scan and an exception change — ran against the same repository at the same time, each could read the same starting state and the last write would silently overwrite the other's changes. scd now serialises updates to its local findings, exceptions, and configuration stores with a lightweight file lock, so concurrent operations no longer lose a change. No action is needed, and behaviour is unchanged for normal single-process use.
+
 ## v1.5.0 (2026-06-23)
 
 This release makes findings and team review decisions first-class, continuously synced state — the largest release since 1.4.0 — and it brings a refreshed, easier-to-read command-line experience.
