@@ -1,10 +1,20 @@
 # scd – Release Notes
 
-## v1.5.1 — unreleased
+## v1.5.1 (2026-07-03)
 
-A reliability fix for concurrent use.
+Reliability, and a lower-friction, clearer command-line experience.
 
 **Concurrent writes no longer lose data.** When two scans — or a scan and an exception change — ran against the same repository at the same time, each could read the same starting state and the last write would silently overwrite the other's changes. scd now serialises updates to its local findings, exceptions, and configuration stores with a lightweight file lock, so concurrent operations no longer lose a change. No action is needed, and behaviour is unchanged for normal single-process use.
+
+**Pre-commit and pre-push hooks now respect your scope exclusions.** A file you have excluded with `scd repo scope` is no longer scanned by the git hooks — previously the hooks scanned every changed file regardless of scope, so an excluded test file or document could still block a commit. Manual scans already honoured the exclusion; the hooks now match.
+
+**`scd repo configure` works without `scd init`.** Setting a per-repo option (for example `scd repo configure --trust-level balanced`) no longer fails with "run scd init first" when the repo has no configuration yet — it is created on demand in scd's global store (never in your repository), the same way scanning already works without an explicit init.
+
+**Clear a setting with `--unset`.** `scd repo configure --unset <setting>` and `scd configure --unset <setting>` remove a per-repo or global setting so its value falls back to the layer below (repo → global → built-in default). The command reports the new effective value and where it now comes from.
+
+**`--deep` shows what it cost and where it ran.** Deep analysis output now shows the AI token spend for the run and the data jurisdiction of the provider (customer infrastructure / EU / US), so you can see at a glance how much a deep run used and where the code was analysed.
+
+**A clearer message when `--deep` is disabled by privacy settings.** When `trust_level` is `maximum_privacy`, the notice explaining that deep analysis is off now says where that setting comes from (this repo or your global default) and points to the exact command to enable it for the repo.
 
 ## v1.5.0 (2026-06-23)
 
