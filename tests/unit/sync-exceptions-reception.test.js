@@ -677,6 +677,25 @@ describe('flush() per-repo attribution', () => {
   });
 });
 
+// ── flush status notices (surface push failures at explicit commands) ────────
+
+describe('flushStatusNotice', () => {
+  test('server-side failures warn; success is quiet; unreachable is soft info', () => {
+    // Quiet outcomes — never nag on a healthy or empty sync.
+    for (const s of ['sent', 'empty', null, undefined, 'weird']) {
+      assert.equal(pushQueue.flushStatusNotice(s), null, `${s} → quiet`);
+    }
+    // Server-side failures the user must see (the silent-500 gap).
+    for (const s of ['error', 'auth_failed', 'license_invalid']) {
+      const n = pushQueue.flushStatusNotice(s);
+      assert.equal(n.level, 'warn', `${s} → warn`);
+      assert.ok(n.message && typeof n.message === 'string', `${s} has a message`);
+    }
+    // Offline-first: an unreachable server is expected, surfaced softly.
+    assert.equal(pushQueue.flushStatusNotice('unreachable').level, 'info');
+  });
+});
+
 // ── pull path does not touch the ack token (Branch C contract) ───────────────
 
 describe('pull/push channel separation', () => {
