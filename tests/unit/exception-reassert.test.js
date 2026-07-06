@@ -17,6 +17,12 @@ const path   = require('path');
 const http   = require('http');
 const crypto = require('crypto');
 
+// Isolate HOME so ~/.scd (global config INCLUDING the developer's personal token)
+// is a throwaway temp dir — never read or clobber the real config. MUST be set
+// before requiring store / global-config, which resolve ~/.scd at module load.
+const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'scd-reassert-home-'));
+process.env.HOME = HOME;
+
 const root = path.resolve(__dirname, '../..');
 const { reassertApprovedExceptions } = require(path.join(root, 'lib/exception-manager'));
 const { storeDir } = require(path.join(root, 'lib/store'));
@@ -57,12 +63,9 @@ const approved = (over) => buildExceptionRecord({
   reason: 'fp', created_at: '2026-07-06T00:00:00.000Z',
 });
 
-let origUrl, origToken;
-before(() => { origUrl = globalConfig.getCentralUrl(); origToken = globalConfig.getCentralToken(); });
-after(() => {
-  if (origUrl)   globalConfig.setCentralUrl(origUrl);   else globalConfig.removeCentralUrl();
-  if (origToken) globalConfig.setCentralToken(origToken); else { try { globalConfig.remove('CENTRAL_TOKEN'); } catch {} }
-});
+// No snapshot/restore of the real config — HOME is isolated, so setCentralUrl /
+// setCentralToken below write only into the throwaway temp ~/.scd.
+after(() => { try { fs.rmSync(HOME, { recursive: true, force: true }); } catch {} });
 
 test('re-asserts approved+hashed exceptions with client_status; aggregates reconciled', async () => {
   const r = mkTempRepo();

@@ -12,9 +12,10 @@
  * unique repoId fingerprint. The scd global store (~/.scd/repos/{id}/) is
  * cleaned up afterwards so test runs don't accumulate state.
  *
- * centralUrl + token are set via the global-config singleton; since the
- * configure-helper uses ~/.scd/config (a real file), each test snapshots and
- * restores any pre-existing values around the assertion window.
+ * centralUrl + token are set via the global-config singleton. HOME is isolated to
+ * a throwaway temp dir before the store/global-config modules load, so ~/.scd (and
+ * the developer's real personal token) is never read or clobbered — the safe
+ * alternative to snapshot/restore, which loses the real token if a run is interrupted.
  */
 
 'use strict';
@@ -26,6 +27,14 @@ const os     = require('os');
 const path   = require('path');
 const http   = require('http');
 const crypto = require('crypto');
+
+// Isolate HOME so ~/.scd (global config INCLUDING the developer's personal token)
+// is a throwaway temp dir — never read or clobber the real config. MUST be set
+// before requiring store / global-config, which resolve ~/.scd at module load.
+// (A snapshot/restore of the real config is unsafe: an interrupted run leaves the
+// test token behind, and a later run captures it as the "original".)
+const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'scd-excpush-home-'));
+process.env.HOME = HOME;
 
 const root = path.resolve(__dirname, '../..');
 const tracker = require(path.join(root, 'lib/exceptions-push-tracker'));
@@ -97,17 +106,9 @@ function seedConfigWithException(repoRoot, exception) {
 // global-config writes to ~/.scd/config (real file). Snapshot any existing
 // central_url so we leave the user's setup unchanged after the tests run.
 
-let originalCentralUrl, originalCentralToken;
-before(() => {
-  originalCentralUrl   = globalConfig.getCentralUrl();
-  originalCentralToken = globalConfig.getCentralToken();
-});
-after(() => {
-  if (originalCentralUrl)   globalConfig.setCentralUrl(originalCentralUrl);
-  else                      globalConfig.removeCentralUrl();
-  if (originalCentralToken) globalConfig.setCentralToken(originalCentralToken);
-  else                      { try { globalConfig.remove('CENTRAL_TOKEN'); } catch {} }
-});
+// No snapshot/restore of the real config — HOME is isolated, so the setCentralUrl /
+// setCentralToken calls in the tests write only into the throwaway temp ~/.scd.
+after(() => { try { fs.rmSync(HOME, { recursive: true, force: true }); } catch {} });
 
 // ── Test 1 — tracker write semantics by mode ───────────────────────────────
 
