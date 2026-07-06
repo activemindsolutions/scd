@@ -148,7 +148,9 @@ describe('§7 — only approved excepts (un-approved does not suppress)', () => 
   test('approved excepts; pending does NOT; rejected → rejected', () => {
     assert.equal(reconcileException(FINDING, [mkExc('e', { status: 'approved' })]).excepted, true);
 
-    const pend = reconcileException(FINDING, [mkExc('e', { status: 'pending' })]);
+    // Fresh created_at so the pending default-TTL never lands in the past on the day
+    // the suite runs (mkExc's fixed default would otherwise cross the TTL boundary).
+    const pend = reconcileException(FINDING, [mkExc('e', { status: 'pending', created_at: new Date().toISOString() })]);
     assert.equal(pend.excepted, false, 'pending must not suppress its finding');
     assert.equal(pend.pending, true);
 
