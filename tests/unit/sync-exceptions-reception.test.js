@@ -177,12 +177,16 @@ after(() => {
 });
 
 // Write a controlled single-event queue (so flush has exactly one event to send).
-function seedQueue() {
+// repoId is stamped from the repo the test flushes for — flush groups by it and
+// drops unattributed entries, so a seeded event must carry its repo's id.
+function seedQueue(repoRoot) {
+  const store = require(path.join(root, 'lib/store'));
   const entry = {
     id:          `t-${Date.now()}-${counter++}`,
     ts:          new Date().toISOString(),
     attempts:    0,
     lastAttempt: null,
+    repoId:      repoRoot ? store.getRepoId(repoRoot) : null,
     event:       { type: 'scan_completed', ts: new Date().toISOString() },
   };
   fs.mkdirSync(path.dirname(pushQueue.QUEUE_PATH), { recursive: true });
@@ -401,7 +405,7 @@ describe('flush() push-response channel', () => {
     try {
       seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
         code_hash: 'abcdef0123456789abcdef0123456789' });
-      seedQueue();
+      seedQueue(r);
 
       const status = await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
       assert.equal(status, 'sent');
@@ -421,7 +425,7 @@ describe('flush() push-response channel', () => {
     try {
       seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
         code_hash: 'abcdef0123456789abcdef0123456789' });
-      seedQueue();
+      seedQueue(r);
 
       const status = await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
       assert.equal(status, 'sent');
@@ -441,7 +445,7 @@ describe('flush() push-response channel', () => {
     try {
       seedException(r, { id: 'exc-1', rule: 'RULE-1', file: 'src/a.js', line: 5,
         code_hash: 'abcdef0123456789abcdef0123456789' });
-      seedQueue();
+      seedQueue(r);
 
       await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
       assert.ok(readMeta(r).lastSynced, 'empty array IS evidence → staleness bumped');
@@ -460,7 +464,7 @@ describe('flush() push-response channel', () => {
     });
     const r = mkTempRepo();
     try {
-      seedQueue();
+      seedQueue(r);
 
       await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
       assert.ok(captured && captured.meta, 'meta present');
@@ -480,7 +484,7 @@ describe('flush() push-response channel', () => {
     const r = mkTempRepo();
     try {
       store.setSyncAckToken(r, '2026-06-06T10:00:00.000Z');
-      seedQueue();
+      seedQueue(r);
 
       await pushQueue.flush(mock.url, { repoRoot: r, token: 'test-token' });
       assert.equal(captured.meta.sync_exceptions_acked_through, '2026-06-06T10:00:00.000Z',
@@ -563,9 +567,10 @@ describe('flush() empty-queue pull (E1d)', () => {
 
 describe('flush() token rejection (#67)', () => {
 
-  function seedOneEvent(attempts = 3) {
+  function seedOneEvent(repoRoot, attempts = 3) {
     fs.writeFileSync(pushQueue.QUEUE_PATH, JSON.stringify({
       id: 't-67', ts: new Date().toISOString(), attempts, lastAttempt: null,
+      repoId: require(path.join(root, 'lib/store')).getRepoId(repoRoot),
       event: { type: 'scan_completed', ts: new Date().toISOString() },
     }) + '\n', 'utf8');
   }
@@ -579,7 +584,7 @@ describe('flush() token rejection (#67)', () => {
     });
     const r = mkTempRepo();
     try {
-      seedOneEvent(3);
+      seedOneEvent(r, 3);
       const status = await pushQueue.flush(mock.url, { repoRoot: r });
       assert.equal(status, 'auth_failed');
 
@@ -594,6 +599,81 @@ describe('flush() token rejection (#67)', () => {
       assert.equal(status2, 'sent');
       assert.equal(fs.readFileSync(pushQueue.QUEUE_PATH, 'utf8').trim(), '', 'delivered once token is valid');
     } finally { await mock.close(); cleanup(r); }
+  });
+});
+
+// ── per-repo attribution (#237) ──────────────────────────────────────────────
+// The global queue is shared by every repo. flush() must group by each event's
+// enqueue-time repoId and send one batch per repo — never stamp one id from the
+// flushing cwd. These live in THIS file (the queue's sole writer) so they never
+// race the global queue with a second parallel test process.
+
+describe('flush() per-repo attribution', () => {
+  const store = require(path.join(root, 'lib/store'));
+
+  // Write a multi-repo queue directly. Each spec: { repoId, type }. null repoId
+  // models a legacy (pre-fix) entry with no attribution.
+  function seedMulti(specs) {
+    const lines = specs.map((s, i) => JSON.stringify({
+      id:          `attr-${process.pid}-${counter++}-${i}`,
+      ts:          new Date().toISOString(),
+      attempts:    0,
+      lastAttempt: null,
+      repoId:      s.repoId || null,
+      event:       { type: s.type || 'scan_completed', ts: new Date().toISOString() },
+    }));
+    fs.mkdirSync(path.dirname(pushQueue.QUEUE_PATH), { recursive: true });
+    fs.writeFileSync(pushQueue.QUEUE_PATH, lines.length ? lines.join('\n') + '\n' : '', 'utf8');
+  }
+
+  test('each repo delivered under its OWN id, even when flushed from another repo', async () => {
+    const batches = [];
+    const mock = await startMockServer((req, res, json) => {
+      batches.push(json);
+      res.statusCode = 200; res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ received: 1, sync_exceptions: [] }));
+    });
+    const repoA = mkTempRepo(), repoB = mkTempRepo(), repoC = mkTempRepo();
+    const idA = store.getRepoId(repoA), idB = store.getRepoId(repoB), idC = store.getRepoId(repoC);
+    try {
+      seedMulti([
+        { repoId: idA, type: 'findings_batch' },
+        { repoId: idA, type: 'scan_completed' },
+        { repoId: idB, type: 'findings_batch' },
+      ]);
+      // Flush from repo C — the pre-fix bug would have stamped C on everything.
+      const status = await pushQueue.flush(mock.url, { repoRoot: repoC, token: 't' });
+      assert.equal(status, 'sent');
+
+      const byId = {};
+      for (const b of batches) byId[b.meta.repoId] = (byId[b.meta.repoId] || []).concat(b.events.map(e => e.type));
+      assert.deepEqual((byId[idA] || []).sort(), ['findings_batch', 'scan_completed'], "A's events under A");
+      assert.deepEqual(byId[idB], ['findings_batch'], "B's events under B");
+      assert.ok(!byId[idC], 'nothing delivered under the flushing repo C');
+      assert.equal(fs.readFileSync(pushQueue.QUEUE_PATH, 'utf8').trim(), '', 'queue drained after delivery');
+    } finally { await mock.close(); cleanup(repoA); cleanup(repoB); cleanup(repoC); }
+  });
+
+  test('unattributed (legacy) entries are dropped, never misrouted', async () => {
+    const batches = [];
+    const mock = await startMockServer((req, res, json) => {
+      batches.push(json);
+      res.statusCode = 200; res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ received: 1, sync_exceptions: [] }));
+    });
+    const repoA = mkTempRepo();
+    const idA = store.getRepoId(repoA);
+    try {
+      seedMulti([
+        { repoId: null, type: 'scan_completed' },   // legacy — must NOT be delivered
+        { repoId: idA,  type: 'findings_batch' },
+      ]);
+      await pushQueue.flush(mock.url, { repoRoot: repoA, token: 't' });
+      assert.equal(batches.length, 1, 'only the attributed repo is contacted');
+      assert.equal(batches[0].meta.repoId, idA);
+      assert.equal(batches[0].events.length, 1, 'legacy event never smuggled into another batch');
+      assert.equal(fs.readFileSync(pushQueue.QUEUE_PATH, 'utf8').trim(), '', 'legacy dropped + attributed sent');
+    } finally { await mock.close(); cleanup(repoA); }
   });
 });
 
@@ -721,7 +801,7 @@ describe('delivery order — events before exception push', () => {
     ];
     try {
       seedPendingExc(r);
-      seedQueue();
+      seedQueue(r);
       await captureAsync(() => require(path.join(root, 'lib/cli-helpers')).tryFlush({}));
       assertEventsBeforeExceptions(mock.order, 'scan flush');
     } finally { un.forEach(f => f()); await mock.close(); cleanup(r); }
@@ -737,7 +817,7 @@ describe('delivery order — events before exception push', () => {
     ];
     try {
       seedPendingExc(r);
-      seedQueue();
+      seedQueue(r);
       const { Command } = require('commander');
       const program = new Command();
       program.exitOverride();
@@ -757,7 +837,7 @@ describe('delivery order — events before exception push', () => {
     ];
     try {
       seedPendingExc(r);
-      seedQueue();
+      seedQueue(r);
       await captureAsync(() => require(path.join(root, 'lib/doctor')).doctor());
       assertEventsBeforeExceptions(mock.order, 'scd doctor');
     } finally { un.forEach(f => f()); await mock.close(); cleanup(r); }
@@ -774,7 +854,7 @@ describe('delivery order — events before exception push', () => {
       storeDir(r);  // create the global store dir (normally done by a prior scan)
       fs.mkdirSync(path.join(r, 'src'), { recursive: true });
       fs.writeFileSync(path.join(r, 'src', 'a.js'), 'a\nb\nc\nd\nconst x = bad;\n');
-      seedQueue();
+      seedQueue(r);
       await captureAsync(() => em.addException(r,
         { rule: 'RULE-1', file: 'src/a.js', line: '5', reason: 'ordering test' }, 'exception'));
       assertEventsBeforeExceptions(mock.order, 'accept-time');
@@ -791,7 +871,7 @@ describe('delivery order — events before exception push', () => {
     ];
     try {
       seedPendingExc(r);
-      seedQueue();
+      seedQueue(r);
       await captureAsync(() => require(path.join(root, 'lib/cli-helpers')).tryFlush({}));
       assertEventsBeforeExceptions(mock.order, 'flush failure');
     } finally { un.forEach(f => f()); await mock.close(); cleanup(r); }
@@ -817,7 +897,7 @@ describe('sync notice reflects post-flush state', () => {
     try {
       seedPendingExc(r);
       seedStaleMeta(r);
-      seedQueue();
+      seedQueue(r);
 
       // Pre-flush the notice would have been shown (1 pending).
       assert.ok(em.getSyncNotice(r), 'pending notice exists before the flush');
@@ -840,7 +920,7 @@ describe('sync notice reflects post-flush state', () => {
     try {
       seedPendingExc(r);
       seedStaleMeta(r);
-      seedQueue();
+      seedQueue(r);
 
       await recordConsole(() => require(path.join(root, 'lib/cli-helpers')).tryFlush({}));
       assert.ok(em.getSyncNotice(r), 'offline flush leaves the pending notice intact');
@@ -861,12 +941,14 @@ describe('scd queue list/reset', () => {
   const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
 
   // Write a controlled multi-entry queue. Each spec: { type, attempts, ageDays }.
-  function writeQueue(specs) {
+  function writeQueue(specs, repoRoot) {
+    const rid = repoRoot ? require(path.join(root, 'lib/store')).getRepoId(repoRoot) : null;
     const lines = specs.map((s, i) => JSON.stringify({
       id:          `q-${process.pid}-${counter++}-${i}`,
       ts:          new Date(Date.now() - (s.ageDays || 0) * 86400000).toISOString(),
       attempts:    s.attempts || 0,
       lastAttempt: s.attempts ? new Date().toISOString() : null,
+      repoId:      rid,
       event:       { type: s.type || 'scan_completed', ts: new Date().toISOString() },
     }));
     fs.mkdirSync(path.dirname(pushQueue.QUEUE_PATH), { recursive: true });
@@ -930,7 +1012,7 @@ describe('scd queue list/reset', () => {
       writeQueue([
         { type: 'scan_completed', attempts: 10 },   // stale
         { type: 'findings_batch', attempts: 10 },   // stale
-      ]);
+      ], r);
       const out = stripAnsi(await recordConsole(() => queueCmd.runReset()));
       assert.match(out, /Reset 2 events \(2 were stale\)/);
       assert.equal(pushQueue.listEntries().length, 0, 'queue drained after successful delivery');
@@ -949,7 +1031,7 @@ describe('scd queue list/reset', () => {
       patch(config,  'getRepoRoot',     () => r),
     ];
     try {
-      writeQueue([{ type: 'scan_completed', attempts: 10 }]);   // stale
+      writeQueue([{ type: 'scan_completed', attempts: 10 }], r);   // stale
       const out = stripAnsi(await recordConsole(() => queueCmd.runReset()));
       assert.match(out, /Reset 1 event \(1 was stale\)/);
       assert.match(out, /Server unreachable/);
