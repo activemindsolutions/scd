@@ -141,6 +141,8 @@ test('skips exceptions whose file is scoped-out or gone; pushes only live in-sco
 
     assert.equal(rc.sent, 1, 'only the live, in-scope exception is re-asserted');
     assert.equal(rc.skipped, 2, 'the scoped-out and the gone exception are skipped');
+    assert.equal(rc.skippedScoped, 1, 'the tests/-scoped one counted as scope-excluded');
+    assert.equal(rc.skippedGone, 1, 'the missing file counted as removed');
     assert.ok(captured, 'a batch was sent');
     assert.equal(captured.exceptions.length, 1);
     assert.equal(captured.exceptions[0].rule_id, 'INJ-001', 'the live in-scope one');
