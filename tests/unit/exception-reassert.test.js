@@ -25,8 +25,9 @@ process.env.HOME = HOME;
 
 const root = path.resolve(__dirname, '../..');
 const { reassertApprovedExceptions } = require(path.join(root, 'lib/exception-manager'));
-const { storeDir } = require(path.join(root, 'lib/store'));
+const { storeDir, scopePath } = require(path.join(root, 'lib/store'));
 const { writeExceptions, buildExceptionRecord } = require(path.join(root, 'lib/exceptions-store'));
+const { appendToScope, buildFileEntry } = require(path.join(root, 'lib/commands/scope'));
 const globalConfig = require(path.join(root, 'lib/global-config'));
 
 function startMockServer(handler) {
@@ -81,6 +82,9 @@ test('re-asserts approved+hashed exceptions with client_status; aggregates recon
   try {
     globalConfig.setCentralUrl(srv.url);
     globalConfig.setCentralToken('scd-testtoken');
+    // The re-assert now only pushes LIVE, in-scope exceptions — the files must exist.
+    fs.writeFileSync(path.join(r, 'a.js'), '// x\n');
+    fs.writeFileSync(path.join(r, 'b.js'), '// x\n');
     writeExceptions(r, [
       approved({ id: 'exc-a', rule: 'INJ-001', file: 'a.js', line: 5, line_hash: 'a'.repeat(32) }),
       approved({ id: 'exc-b', rule: 'XSS-001', file: 'b.js', line: 9, line_hash: 'b'.repeat(32) }),
@@ -109,6 +113,43 @@ test('re-asserts approved+hashed exceptions with client_status; aggregates recon
   }
 });
 
+test('skips exceptions whose file is scoped-out or gone; pushes only live in-scope', async () => {
+  const r = mkTempRepo();
+  let captured = null;
+  const srv = await startMockServer((req, res, json) => {
+    captured = json;
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ reconciled: {} }));
+  });
+  try {
+    globalConfig.setCentralUrl(srv.url);
+    globalConfig.setCentralToken('scd-testtoken');
+
+    // A live, in-scope file; a file that exists but is scope-excluded; a gone file.
+    fs.writeFileSync(path.join(r, 'live.js'), '// x\n');
+    fs.mkdirSync(path.join(r, 'tests'), { recursive: true });
+    fs.writeFileSync(path.join(r, 'tests', 'scoped.js'), '// x\n');
+    appendToScope(scopePath(r), 'file_excludes', buildFileEntry('tests/', 'test dir', 'fp-test', '2026-07-06T00:00:00.000Z'));
+
+    writeExceptions(r, [
+      approved({ id: 'exc-live',   rule: 'INJ-001', file: 'live.js',         line: 1, line_hash: 'a'.repeat(32) }),
+      approved({ id: 'exc-scoped', rule: 'XSS-001', file: 'tests/scoped.js',  line: 1, line_hash: 'b'.repeat(32) }),
+      approved({ id: 'exc-gone',   rule: 'RCE-001', file: 'gone.js',          line: 1, line_hash: 'c'.repeat(32) }),
+    ]);
+
+    const rc = await reassertApprovedExceptions(r);
+
+    assert.equal(rc.sent, 1, 'only the live, in-scope exception is re-asserted');
+    assert.equal(rc.skipped, 2, 'the scoped-out and the gone exception are skipped');
+    assert.ok(captured, 'a batch was sent');
+    assert.equal(captured.exceptions.length, 1);
+    assert.equal(captured.exceptions[0].rule_id, 'INJ-001', 'the live in-scope one');
+  } finally {
+    await srv.close();
+    cleanup(r);
+  }
+});
+
 test('standalone (no central url) is a quiet no-op', async () => {
   const r = mkTempRepo();
   try {
@@ -127,6 +168,7 @@ test('older server without a reconciled field → no crash, zero counts', async 
   try {
     globalConfig.setCentralUrl(srv.url);
     globalConfig.setCentralToken('scd-testtoken');
+    fs.writeFileSync(path.join(r, 'a.js'), '// x\n');   // live file so it is re-asserted
     writeExceptions(r, [approved({ id: 'exc-a', rule: 'INJ-001', file: 'a.js', line: 5, line_hash: 'a'.repeat(32) })]);
     const rc = await reassertApprovedExceptions(r);
     assert.equal(rc.sent, 1);
