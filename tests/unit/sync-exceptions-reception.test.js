@@ -600,6 +600,22 @@ describe('flush() token rejection (#67)', () => {
       assert.equal(fs.readFileSync(pushQueue.QUEUE_PATH, 'utf8').trim(), '', 'delivered once token is valid');
     } finally { await mock.close(); cleanup(r); }
   });
+
+  test('413 (permanent client error) → "rejected", entry DROPPED not retried', async () => {
+    const mock = await startMockServer((req, res) => {
+      res.statusCode = 413;
+      res.end(JSON.stringify({ error: 'too many findings', received: 1 }));
+    });
+    const r = mkTempRepo();
+    try {
+      seedOneEvent(r, 0);
+      const status = await pushQueue.flush(mock.url, { repoRoot: r });
+      assert.equal(status, 'rejected');
+      // A permanent client error must NOT churn to stale over 10 flushes — the
+      // batch will never be accepted, so it is dropped immediately.
+      assert.equal(fs.readFileSync(pushQueue.QUEUE_PATH, 'utf8').trim(), '', 'over-cap batch dropped, not retried');
+    } finally { await mock.close(); cleanup(r); }
+  });
 });
 
 // ── per-repo attribution (#237) ──────────────────────────────────────────────
